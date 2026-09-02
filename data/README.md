@@ -1,5 +1,8 @@
 # Data handling
 
-`data/raw/` is reserved for source extracts and `data/processed/` for normalized hourly analytical tables. Real EIA pulls are intentionally gitignored; public GitHub should contain code, schemas, compact evidence, and reproducible instructions rather than large rotating API extracts.
+GridPulse is **API-first**. The Streamlit dashboard queries EIA API v2 directly and does not require a manually downloaded dataset.
 
-The dashboard falls back to a deterministic synthetic development fixture only when `data/processed/hourly_grid.csv` does not exist. That fixture must never be described as an EIA result.
+- `data/raw/` — reserved for approved external snapshots if a future audit requires them.
+- `data/processed/` — reserved for optional reproducibility/model snapshots, not the normal dashboard path.
+
+The production dashboard converts EIA JSON responses directly to pandas DataFrames in memory and uses Streamlit caching to reduce repeated API calls. Large, sensitive, or credential-bearing files should never be committed.
