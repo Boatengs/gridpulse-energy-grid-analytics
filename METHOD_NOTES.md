@@ -34,3 +34,11 @@ The thresholds and weights are provisional screening assumptions. They are not r
 4. rolling-origin validation
 5. peak-hour and seasonal error slices
 6. SHAP only if the tree model earns its complexity
+
+## Live API architecture
+
+The Streamlit dashboard treats EIA API v2 as the primary data source. Responses are converted directly from JSON to pandas DataFrames and cached in memory for one hour. A local CSV is not required for dashboard operation.
+
+The API client paginates with EIA v2 `offset` and `length` parameters so long hourly windows are not silently truncated. `scripts/fetch_eia.py` is retained only for optional reproducibility snapshots when a forecasting experiment needs a frozen retrieval.
+
+If credentials are unavailable or a request fails, the dashboard falls back to a clearly labeled deterministic synthetic fixture. No synthetic values are presented as EIA findings.
