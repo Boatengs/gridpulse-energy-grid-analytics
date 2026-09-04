@@ -1,8 +1,4 @@
-"""Local-file ingestion for downloaded EIA-930 exports.
-
-The loader accepts one CSV, several CSVs, or a directory of CSVs. It supports
-both EIA's long-form exports and GridPulse's already-wide hourly schema.
-"""
+"""Local-file utilities for downloaded EIA-930 data."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -12,12 +8,11 @@ import re
 import pandas as pd
 
 REGION_TYPE_MAP = {
-    "D": "demand_mwh",
-    "DF": "forecast_mwh",
-    "NG": "net_generation_mwh",
-    "TI": "total_interchange_mwh",
+    "D": "demand_mw",
+    "DF": "forecast_mw",
+    "NG": "net_generation_mw",
+    "TI": "total_interchange_mw",
 }
-
 TYPE_NAME_MAP = {
     "demand": "D",
     "demand forecast": "DF",
@@ -27,7 +22,6 @@ TYPE_NAME_MAP = {
     "total interchange": "TI",
     "interchange": "TI",
 }
-
 FUEL_COLUMN_CANDIDATES = (
     "fueltype",
     "fuel_type",
@@ -38,8 +32,7 @@ FUEL_COLUMN_CANDIDATES = (
 
 
 def _clean_name(name: str) -> str:
-    cleaned = re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower())
-    return cleaned.strip("_")
+    return re.sub(r"[^a-z0-9]+", "_", str(name).strip().lower()).strip("_")
 
 
 def _normalize_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -64,23 +57,26 @@ def _resolve_paths(source: str | Path | Iterable[str | Path]) -> list[Path]:
 
 
 def _read_csvs(source: str | Path | Iterable[str | Path]) -> pd.DataFrame:
-    frames = [pd.read_csv(path, low_memory=False) for path in _resolve_paths(source)]
-    return pd.concat(frames, ignore_index=True, sort=False)
+    return pd.concat(
+        [pd.read_csv(path, low_memory=False) for path in _resolve_paths(source)],
+        ignore_index=True,
+        sort=False,
+    )
 
 
 def _find_column(columns: Iterable[str], *candidates: str) -> str | None:
     available = set(columns)
-    for candidate in candidates:
-        if candidate in available:
-            return candidate
-    return None
+    return next((candidate for candidate in candidates if candidate in available), None)
 
 
 def load_region_exports(source: str | Path | Iterable[str | Path]) -> pd.DataFrame:
-    """Load downloaded EIA region-data CSV exports into one hourly wide table."""
+    """Load long-form EIA API/browser exports into one hourly wide table.
+
+    For official six-month BALANCE files, use gridpulse.balance.load_balance_exports.
+    """
     raw = _normalize_columns(_read_csvs(source))
 
-    if {"period", "demand_mwh"}.issubset(raw.columns):
+    if {"period", "demand_mw"}.issubset(raw.columns):
         out = raw.copy()
         out["period"] = pd.to_datetime(out["period"], utc=True, errors="coerce")
         for column in REGION_TYPE_MAP.values():
@@ -88,8 +84,6 @@ def load_region_exports(source: str | Path | Iterable[str | Path]) -> pd.DataFra
                 out[column] = pd.to_numeric(out[column], errors="coerce")
         if "respondent" not in out:
             out["respondent"] = "UNKNOWN"
-        if "respondent_name" not in out:
-            out["respondent_name"] = out["respondent"]
         return (
             out.dropna(subset=["period"])
             .sort_values(["respondent", "period"])
@@ -99,68 +93,44 @@ def load_region_exports(source: str | Path | Iterable[str | Path]) -> pd.DataFra
 
     period_col = _find_column(raw.columns, "period", "datetime", "timestamp")
     respondent_col = _find_column(raw.columns, "respondent", "balancing_authority", "ba")
-    respondent_name_col = _find_column(
-        raw.columns, "respondent_name", "balancing_authority_name", "ba_name"
-    )
     type_col = _find_column(raw.columns, "type", "type_code")
     type_name_col = _find_column(raw.columns, "type_name", "series_description", "series_name")
-    value_col = _find_column(raw.columns, "value", "value_mwh", "mwh")
+    value_col = _find_column(raw.columns, "value", "value_mw", "mw", "value_mwh", "mwh")
 
     required = {"period": period_col, "respondent": respondent_col, "value": value_col}
     missing = [label for label, column in required.items() if column is None]
     if missing:
-        raise ValueError(
-            "Downloaded EIA region-data export is missing required fields: "
-            + ", ".join(missing)
-        )
+        raise ValueError("Downloaded EIA region export is missing: " + ", ".join(missing))
     if type_col is None and type_name_col is None:
-        raise ValueError("Downloaded EIA export needs either a type/type_code or type_name field.")
+        raise ValueError("Downloaded EIA export needs a type code or type name.")
 
     work = pd.DataFrame(
         {
             "period": pd.to_datetime(raw[period_col], utc=True, errors="coerce"),
             "respondent": raw[respondent_col].astype(str).str.strip(),
-            "respondent_name": (
-                raw[respondent_name_col].astype(str).str.strip()
-                if respondent_name_col
-                else raw[respondent_col].astype(str).str.strip()
-            ),
             "value": pd.to_numeric(raw[value_col], errors="coerce"),
         }
     )
-
-    if type_col:
-        type_code = raw[type_col].astype(str).str.strip().str.upper()
-    else:
-        type_code = pd.Series("", index=raw.index, dtype="object")
-
+    type_code = (
+        raw[type_col].astype(str).str.strip().str.upper()
+        if type_col
+        else pd.Series("", index=raw.index, dtype="object")
+    )
     if type_name_col:
-        normalized_names = raw[type_name_col].astype(str).str.strip().str.lower()
-        inferred = normalized_names.map(TYPE_NAME_MAP)
+        inferred = raw[type_name_col].astype(str).str.strip().str.lower().map(TYPE_NAME_MAP)
         type_code = type_code.where(type_code.isin(REGION_TYPE_MAP), inferred)
-
     work["type"] = type_code
     work = work[
         work["type"].isin(REGION_TYPE_MAP)
         & work["period"].notna()
         & work["value"].notna()
-    ].copy()
+    ].drop_duplicates(["period", "respondent", "type"], keep="last")
 
     if work.empty:
-        raise ValueError(
-            "No D/DF/NG/TI hourly rows were found in the downloaded EIA region-data export."
-        )
-
-    duplicate_keys = ["period", "respondent", "type"]
-    if work.duplicated(duplicate_keys).any():
-        work = work.drop_duplicates(duplicate_keys, keep="last")
+        raise ValueError("No D/DF/NG/TI hourly rows were found in the EIA export.")
 
     wide = (
-        work.pivot(
-            index=["period", "respondent", "respondent_name"],
-            columns="type",
-            values="value",
-        )
+        work.pivot(index=["period", "respondent"], columns="type", values="value")
         .reset_index()
         .rename(columns=REGION_TYPE_MAP)
     )
@@ -169,90 +139,75 @@ def load_region_exports(source: str | Path | Iterable[str | Path]) -> pd.DataFra
 
 
 def load_fuel_exports(source: str | Path | Iterable[str | Path]) -> pd.DataFrame:
-    """Load downloaded EIA hourly fuel-type exports into a canonical long table."""
+    """Load long-form EIA fuel exports into period/respondent/fuel/generation_mw."""
     raw = _normalize_columns(_read_csvs(source))
-
     period_col = _find_column(raw.columns, "period", "datetime", "timestamp")
     respondent_col = _find_column(raw.columns, "respondent", "balancing_authority", "ba")
-    respondent_name_col = _find_column(
-        raw.columns, "respondent_name", "balancing_authority_name", "ba_name"
-    )
     fuel_col = _find_column(raw.columns, *FUEL_COLUMN_CANDIDATES)
-    value_col = _find_column(raw.columns, "value", "generation_mwh", "mwh")
-
-    required = {
-        "period": period_col,
-        "respondent": respondent_col,
-        "fuel type": fuel_col,
-        "value": value_col,
-    }
-    missing = [label for label, column in required.items() if column is None]
+    value_col = _find_column(raw.columns, "value", "generation_mw", "mw", "generation_mwh", "mwh")
+    missing = [
+        label
+        for label, column in {
+            "period": period_col,
+            "respondent": respondent_col,
+            "fuel type": fuel_col,
+            "value": value_col,
+        }.items()
+        if column is None
+    ]
     if missing:
-        raise ValueError(
-            "Downloaded EIA fuel-type export is missing required fields: "
-            + ", ".join(missing)
-        )
+        raise ValueError("Downloaded EIA fuel export is missing: " + ", ".join(missing))
 
     out = pd.DataFrame(
         {
             "period": pd.to_datetime(raw[period_col], utc=True, errors="coerce"),
             "respondent": raw[respondent_col].astype(str).str.strip(),
-            "respondent_name": (
-                raw[respondent_name_col].astype(str).str.strip()
-                if respondent_name_col
-                else raw[respondent_col].astype(str).str.strip()
-            ),
             "fuel_type": raw[fuel_col].astype(str).str.strip(),
-            "generation_mwh": pd.to_numeric(raw[value_col], errors="coerce"),
+            "generation_mw": pd.to_numeric(raw[value_col], errors="coerce"),
         }
     )
-    out = out.dropna(subset=["period", "generation_mwh"])
-    out = out[out["fuel_type"].ne("")].copy()
-    out = out.drop_duplicates(["period", "respondent", "fuel_type"], keep="last")
-    return out.sort_values(["respondent", "period", "fuel_type"]).reset_index(drop=True)
+    return (
+        out.dropna(subset=["period", "generation_mw"])
+        .loc[lambda x: x["fuel_type"].ne("")]
+        .drop_duplicates(["period", "respondent", "fuel_type"], keep="last")
+        .sort_values(["respondent", "period", "fuel_type"])
+        .reset_index(drop=True)
+    )
 
 
 def hourly_qa_summary(df: pd.DataFrame) -> dict[str, int | float | str | None]:
-    """Return a compact, human-readable QA summary for a processed hourly table."""
+    """Return compact QA evidence for the processed hourly operating table."""
     if df.empty:
-        return {
-            "rows": 0,
-            "respondents": 0,
-            "start": None,
-            "end": None,
-            "duplicate_hours": 0,
-            "missing_demand": 0,
-            "nonpositive_demand": 0,
-            "missing_hour_slots": 0,
-        }
+        return {"rows": 0, "respondents": 0, "start": None, "end": None}
 
     work = df.copy()
     work["period"] = pd.to_datetime(work["period"], utc=True, errors="coerce")
-    duplicate_hours = int(work.duplicated(["respondent", "period"]).sum())
-    missing_demand = int(work["demand_mwh"].isna().sum()) if "demand_mwh" in work else len(work)
-    nonpositive_demand = (
-        int((pd.to_numeric(work["demand_mwh"], errors="coerce") <= 0).sum())
-        if "demand_mwh" in work
-        else 0
-    )
-
     missing_slots = 0
     for _, group in work.dropna(subset=["period"]).groupby("respondent"):
-        if group.empty:
-            continue
         expected = pd.date_range(group["period"].min(), group["period"].max(), freq="h", tz="UTC")
         missing_slots += max(0, len(expected) - group["period"].nunique())
 
-    return {
+    summary: dict[str, int | float | str | None] = {
         "rows": int(len(work)),
         "respondents": int(work["respondent"].nunique()),
         "start": work["period"].min().isoformat() if work["period"].notna().any() else None,
         "end": work["period"].max().isoformat() if work["period"].notna().any() else None,
-        "duplicate_hours": duplicate_hours,
-        "missing_demand": missing_demand,
-        "nonpositive_demand": nonpositive_demand,
+        "duplicate_hours": int(work.duplicated(["respondent", "period"]).sum()),
         "missing_hour_slots": int(missing_slots),
+        "missing_demand": int(work.get("demand_mw", pd.Series(index=work.index, dtype=float)).isna().sum()),
+        "missing_forecast": int(work.get("forecast_mw", pd.Series(index=work.index, dtype=float)).isna().sum()),
+        "missing_generation": int(work.get("net_generation_mw", pd.Series(index=work.index, dtype=float)).isna().sum()),
+        "missing_interchange": int(work.get("total_interchange_mw", pd.Series(index=work.index, dtype=float)).isna().sum()),
+        "nonpositive_demand": int((pd.to_numeric(work.get("demand_mw"), errors="coerce") <= 0).sum()) if "demand_mw" in work else 0,
     }
+    for flag in ("demand_imputed", "generation_imputed", "interchange_imputed"):
+        if flag in work:
+            summary[flag] = int(work[flag].fillna(False).astype(bool).sum())
+    if "balance_residual_mw" in work:
+        residual = pd.to_numeric(work["balance_residual_mw"], errors="coerce").abs()
+        summary["max_abs_balance_residual_mw"] = float(residual.max())
+        summary["balance_residual_gt_10000_mw"] = int((residual > 10_000).sum())
+    return summary
 
 
 def save_processed(
@@ -260,7 +215,6 @@ def save_processed(
     output_dir: str | Path,
     fuel_data: pd.DataFrame | None = None,
 ) -> tuple[Path, Path | None]:
-    """Write compact Parquet tables used by the dashboard and modeling pipeline."""
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     hourly_path = output / "gridpulse_hourly.parquet"
