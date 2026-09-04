@@ -61,11 +61,22 @@ def test_telemetry_snapshot_classifies_live_freshness() -> None:
     assert stale["freshness"] == "Stale"
 
 
-def test_build_replay_figure_has_browser_animation_frames() -> None:
+def test_build_replay_figure_has_synchronized_browser_animation() -> None:
     fig = build_replay_figure(sample_frame(8), max_frames=8, frame_ms=100)
-    assert len(fig.data) == 3
+    assert len(fig.data) == 5
     assert len(fig.frames) == 6
     assert fig.layout.updatemenus[0].buttons[0].label == "▶ Play"
+    assert fig.layout.updatemenus[0].buttons[2].label == "↺ Restart"
+    assert len(fig.layout.sliders[0].steps) == 6
+    assert fig.layout.yaxis2.range == (0, 100)
+
+
+def test_build_replay_figure_keeps_dark_theme_labels_visible() -> None:
+    fig = build_replay_figure(sample_frame(8), max_frames=8, frame_ms=100)
+    theme = fig.layout.template.layout
+    assert theme.font.color == "#EAF6FF"
+    assert theme.xaxis.tickfont.color == "#EAF6FF"
+    assert theme.yaxis.tickfont.color == "#EAF6FF"
 
 
 def test_build_replay_figure_rejects_extreme_speed() -> None:

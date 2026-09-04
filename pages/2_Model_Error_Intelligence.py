@@ -7,7 +7,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from gridpulse.presentation import configure_plotly_theme, inject_dashboard_css
+
 st.set_page_config(page_title="GridPulse Model Error Intelligence", page_icon="📊", layout="wide")
+configure_plotly_theme()
+inject_dashboard_css()
 
 RESULT_DIR = Path("results/error_slices")
 SUMMARY_PATH = RESULT_DIR / "summary.json"

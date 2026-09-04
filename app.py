@@ -16,10 +16,13 @@ from gridpulse.eia import EIAClient
 from gridpulse.features import add_operational_features, add_qa_flags
 from gridpulse.forecasting import evaluate_eia_residual_candidate
 from gridpulse.io import hourly_qa_summary
+from gridpulse.live import build_replay_figure
+from gridpulse.presentation import inject_dashboard_css
 from gridpulse.stress import add_stress_score
 
 st.set_page_config(page_title="GridPulse", page_icon="⚡", layout="wide")
 load_dotenv()
+inject_dashboard_css()
 
 PROCESSED_HOURLY = Path(
     os.getenv("GRIDPULSE_HOURLY_PATH", "data/processed/gridpulse_hourly.parquet")
@@ -28,7 +31,7 @@ PROCESSED_FUEL = Path(
     os.getenv("GRIDPULSE_FUEL_PATH", "data/processed/gridpulse_fuel_mix.parquet")
 )
 
-st.title("GridPulse — Energy Demand & Grid Stress Analytics")
+st.title("⚡ GridPulse — Energy Demand & Grid Stress Analytics")
 st.caption(
     "Downloaded EIA-930 data • demand • day-ahead forecast • ramping • "
     "generation mix • interchange • forecasting • operational stress screening"
@@ -97,6 +100,20 @@ with st.sidebar:
         "Recommended: freeze the downloaded EIA-930 files, prepare them once, "
         "and run every figure/model against the same snapshot."
     )
+    st.divider()
+    st.header("Presentation")
+    animated_presentation = st.toggle(
+        "Animated operating story",
+        value=True,
+        help="Show the lead demand/forecast view as a synchronized hour-by-hour replay.",
+    )
+    animation_speed = st.select_slider(
+        "Animation speed",
+        options=["Slow", "Normal", "Fast", "Very fast"],
+        value="Normal",
+        disabled=not animated_presentation,
+    )
+    animation_ms = {"Slow": 360, "Normal": 180, "Fast": 90, "Very fast": 45}[animation_speed]
 
 fuel_df: pd.DataFrame | None = None
 demo_mode = False
@@ -217,12 +234,27 @@ c2.metric("Forecast MAE", f"{forecast_mae:,.0f} MW" if pd.notna(forecast_mae) el
 c3.metric("Max hourly ramp", f"{max_ramp:.1f}%" if pd.notna(max_ramp) else "N/A")
 c4.metric("Max stress signal", f"{max_stress:.0f}/100" if pd.notna(max_stress) else "N/A")
 
-st.subheader("Demand vs day-ahead forecast")
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=view["period"], y=view["demand_mw"], name="Actual demand", mode="lines"))
-fig.add_trace(go.Scatter(x=view["period"], y=view["forecast_mw"], name="Day-ahead forecast", mode="lines"))
-fig.update_layout(height=420, yaxis_title="MW", xaxis_title=None, hovermode="x unified")
-st.plotly_chart(fig, use_container_width=True)
+if animated_presentation:
+    st.subheader("Animated demand, forecast & operating stress")
+    animation_view = view.tail(min(168, len(view))).copy()
+    fig = build_replay_figure(
+        animation_view,
+        max_frames=len(animation_view),
+        frame_ms=animation_ms,
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+    st.caption(
+        "Press Play for the hour-by-hour operating story, Pause to inspect a moment, or drag the timeline "
+        "to scrub the replay. The lower panel synchronizes the GridPulse stress screen with demand and forecast."
+    )
+else:
+    st.subheader("Demand vs day-ahead forecast")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=view["period"], y=view["demand_mw"], name="Actual demand", mode="lines"))
+    fig.add_trace(go.Scatter(x=view["period"], y=view["forecast_mw"], name="Day-ahead forecast", mode="lines"))
+    fig.update_layout(height=420, yaxis_title="MW", xaxis_title=None, hovermode="x unified")
+    st.plotly_chart(fig, use_container_width=True)
+
 st.markdown(
     "**What this shows:** high demand and forecast misses are separate operating "
     "questions; the overlay makes it possible to see when they occur together."
