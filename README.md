@@ -1,16 +1,16 @@
 # GridPulse — Energy Demand & Grid Stress Analytics
 
-**Hourly demand → forecast error → ramping → generation mix → interchange → QA review → stress screening → forecasting → operational dashboard**
+**Hourly demand → forecast error → ramping → generation mix → interchange → QA review → stress screening → forecasting → live control room**
 
 GridPulse is a visual-first energy analytics project built around U.S. Energy Information Administration Form EIA-930 hourly grid data. The central question is:
 
 > **When does electricity demand become unusually difficult to forecast or serve, what operating conditions coincide with those hours, and can a model improve on the actual EIA-reported day-ahead forecast?**
 
-The project combines reproducible data engineering, time-series diagnostics, source-data QA, operational stress screening, generation-mix context, forecast benchmarking, rolling-origin validation, and a Streamlit dashboard.
+The project combines reproducible data engineering, time-series diagnostics, source-data QA, operational stress screening, generation-mix context, forecast benchmarking, rolling-origin validation, error-slice intelligence, and a multipage Streamlit dashboard with live/replay operating views.
 
 ## Verified result
 
-GridPulse now has a real out-of-time PJM result from the frozen 2022–2025 EIA-930 snapshot.
+GridPulse has a real out-of-time PJM result from the frozen 2022–2025 EIA-930 snapshot.
 
 All headline forecasts are scored on the same **8,690 valid 2025 holdout hours**. Peak performance uses one shared top-decile demand threshold of **119,360.1 MW**.
 
@@ -25,7 +25,7 @@ Against EIA's actual reported day-ahead forecast, the GridPulse candidate reduce
 - **overall MAE by 44.2%**, and
 - **peak-demand MAE by 36.0%**.
 
-That is not just a single-split result. Expanding-window 30-day rolling-origin validation produced **13 valid future folds**, and the GridPulse candidate beat EIA on both overall and peak-demand MAE in **13 of 13 folds**.
+Expanding-window 30-day rolling-origin validation produced **13 valid future folds**, and the GridPulse candidate beat EIA on both overall and peak-demand MAE in **13 of 13 folds**.
 
 - median overall improvement: **43.7%**,
 - median peak improvement: **25.3%**,
@@ -33,6 +33,46 @@ That is not just a single-split result. Expanding-window 30-day rolling-origin v
 - worst-fold peak improvement: **15.1%**.
 
 The exact machine-readable outputs are committed under [`results/`](results/README.md).
+
+## Error intelligence: where the model wins and where it does not
+
+The same 8,690 common 2025 rows are decomposed by PJM local hour, month, season, weekday/weekend, and demand decile.
+
+Key findings:
+
+- **23 of 24 local-hour slices beat EIA.** The exception is **08:00 PJM local**, where EIA MAE is 1,668 MW and GridPulse ML MAE is 1,682 MW — a **0.8% regression**.
+- The strongest hourly correction is **01:00 PJM local**, with a **72.7% MAE reduction**.
+- Every month improves: **July** is strongest at **55.2%**, while **January** is weakest but still improves **26.5%**.
+- **JJA** improves **52.0%**; **DJF** improves **28.8%**.
+- Weekdays and weekends both improve materially: **45.3%** and **41.1%**, respectively.
+- Every demand decile improves on MAE. **D2** is strongest at **55.6%**; the highest-demand decile **D10** is weakest at **36.0%**.
+
+The peak-demand result has an important asymmetry: in D10, mean positive forecast bias falls from roughly **2,149 MW to 1,451 MW**, but the underforecast rate increases from **63.3% for EIA to 69.2% for GridPulse ML**. Peak misses are smaller on average, but residual misses are somewhat more frequently on the low side.
+
+The committed aggregate tables live in `results/error_slices/`, and the Streamlit **Model Error Intelligence** page makes them interactive.
+
+## Live animated control room
+
+GridPulse includes a dedicated Streamlit **Live Control Room** page with three operating modes:
+
+- **Frozen PJM replay** — deterministic portfolio replay from the prepared PJM dataset,
+- **Live EIA API** — recent EIA-930 observations when `EIA_API_KEY` is configured,
+- **Synthetic demo** — clearly labeled development fallback.
+
+The control room includes:
+
+- browser-side Play/Pause demand-versus-forecast animation,
+- selectable replay windows and playback speed,
+- optional live API auto-refresh about every five minutes,
+- latest-observation timestamp and Fresh / Delayed / Stale / Replay status,
+- demand, EIA forecast, forecast error, ramp, generation, interchange, and stress KPIs,
+- operational stress gauge,
+- recent pulse timeline,
+- high-stress event tape,
+- QA watch,
+- the verified 2025 model result as historical context.
+
+EIA-930 is an **hourly operational feed**, not sub-second SCADA telemetry. The page reports observation age explicitly and does not present stale data as instantaneous live telemetry. See [`LIVE_DASHBOARD.md`](LIVE_DASHBOARD.md) for operation and deployment notes.
 
 ## Real PJM evidence
 
@@ -54,7 +94,7 @@ The older `demo_*.svg` files remain in `figures/` as clearly labeled synthetic d
 
 The production snapshot uses **eight official EIA-930 six-month BALANCE CSV files** covering PJM from 2022 through 2025 local time. Exact filenames and SHA-256 hashes are recorded in `DATASET_MANIFEST.md`.
 
-For the verified result above, the files were re-fetched from EIA's official six-month archive and every SHA-256 matched the frozen manifest before preparation or modeling. The compact verification record is committed at `results/source_verification.json`.
+For the verified result, the files were re-fetched from EIA's official six-month archive and every SHA-256 matched the frozen manifest before preparation or modeling. The compact verification record is committed at `results/source_verification.json`.
 
 The ingestion path:
 
@@ -84,15 +124,13 @@ missing-hour / duplicate / missing-value QA
         ↓
 non-mutating source-anomaly flags
         ↓
-operational feature engineering
-        ↓
-transparent stress screening
+operational feature engineering + stress screening
         ↓
 Parquet analytical layer
         ↓
 EIA benchmark + ML candidate + rolling-origin validation
         ↓
-dashboard + committed analytical evidence
+error slices + live/replay dashboard + committed evidence
 ```
 
 ## Prepare downloaded data
@@ -211,7 +249,7 @@ The committed fold-level evidence is in `results/rolling_origin_folds.csv`.
 
 ## Dashboard surfaces
 
-GridPulse supports:
+The Streamlit app now includes the original analytical dashboard plus dedicated **Live Control Room** and **Model Error Intelligence** pages. Across those surfaces GridPulse provides:
 
 1. demand vs day-ahead forecast,
 2. forecast-error distribution,
@@ -226,10 +264,13 @@ GridPulse supports:
 11. EIA vs weekly naive vs ML out-of-time benchmark,
 12. peak-demand forecast benchmark,
 13. model promotion gate,
-14. KPI strip,
-15. data-QA sidebar.
+14. animated historical replay with Play/Pause,
+15. live EIA API refresh with freshness labeling,
+16. current operating KPI and stress-gauge view,
+17. hour/month/season/day-type/demand-decile error intelligence,
+18. signed forecast-bias and underforecast-rate diagnostics.
 
-Every major dashboard output includes a short plain-language interpretation.
+Every major dashboard output includes a short plain-language interpretation or decision boundary.
 
 ## Current interpretation
 
@@ -237,20 +278,23 @@ The current evidence supports a strong but bounded statement:
 
 > On the frozen PJM 2022–2025 EIA-930 snapshot, using the documented feature timing and 2025 out-of-time evaluation, the GridPulse residual-correction candidate materially improves on EIA's reported day-ahead forecast and that improvement is stable across the project's rolling-origin folds.
 
-It does **not** establish superiority for other balancing authorities, other years, revised future source snapshots, or a production forecasting stack with different information availability.
+The slice analysis adds two important qualifiers: the model is not better in every local-hour slice, and lower peak MAE does not eliminate a tendency to underforecast peak hours.
+
+The result does **not** establish superiority for other balancing authorities, other years, revised future source snapshots, or a production forecasting stack with different information availability.
 
 ## Next analytical extensions
 
-- hour-of-day, season, weekday/weekend, and demand-decile error slices,
 - broader balancing-authority replication,
 - tighter feature-availability audits against an explicit forecast-issuance clock if available,
-- SHAP only if explanation work is useful after the model has already earned its complexity.
+- targeted investigation of the 08:00 local regression,
+- peak-focused calibration or asymmetric-loss experiments to address D10 underforecast frequency,
+- SHAP only if explanation work remains useful after these robustness checks.
 
 Random train/test splits are not appropriate for this time-series problem.
 
 ## Optional API route
 
-`src/gridpulse/eia.py` remains in the project. The dashboard can query EIA API v2 when an `EIA_API_KEY` is configured for recent-data checks or experiments. The API is not required for the main frozen-snapshot workflow.
+`src/gridpulse/eia.py` remains in the project. The Live Control Room can query EIA API v2 when an `EIA_API_KEY` is configured. The API is not required for the main frozen-snapshot workflow.
 
 ## Quick start
 
@@ -264,12 +308,18 @@ pip install -e .
 streamlit run app.py
 ```
 
+Streamlit's page navigation exposes the Live Control Room and Model Error Intelligence pages. See `LIVE_DASHBOARD.md` for live-mode configuration.
+
 ## Repository structure
 
 ```text
 .
 ├── app.py
+├── pages/
+│   ├── 1_Live_Control_Room.py
+│   └── 2_Model_Error_Intelligence.py
 ├── README.md
+├── LIVE_DASHBOARD.md
 ├── PROJECT_CHARTER.md
 ├── METHOD_NOTES.md
 ├── DATA_DICTIONARY.md
@@ -279,19 +329,28 @@ streamlit run app.py
 │   ├── headline_benchmark.csv
 │   ├── model_evaluation_summary.json
 │   ├── rolling_origin_folds.csv
-│   └── source_verification.json
+│   ├── source_verification.json
+│   └── error_slices/
+│       ├── hour.csv
+│       ├── month.csv
+│       ├── season.csv
+│       ├── day_type.csv
+│       ├── demand_decile.csv
+│       └── summary.json
 ├── src/gridpulse/
 │   ├── balance.py
 │   ├── eia.py
-│   ├── io.py
 │   ├── features.py
 │   ├── forecasting.py
-│   ├── validation.py
+│   ├── io.py
+│   ├── live.py
+│   ├── slicing.py
 │   ├── stress.py
-│   └── demo.py
+│   └── validation.py
 ├── scripts/
 │   ├── prepare_downloaded_eia.py
 │   ├── evaluate_models.py
+│   ├── generate_error_slices.py
 │   ├── fetch_eia.py
 │   └── generate_readme_figures.py
 ├── notebooks/
@@ -306,8 +365,10 @@ streamlit run app.py
 - GridPulse does **not** predict blackouts.
 - Stress flags describe unusual combinations of observed operating signals and require interpretation.
 - QA flags do not silently mutate or delete EIA observations.
-- EIA-930 values can contain missing, imputed, anomalous, or revised observations.
+- EIA-930 values can contain missing, imputed, anomalous, delayed, or revised observations.
+- Live EIA mode is hourly operational monitoring, not sub-second telemetry.
 - Forecast comparisons preserve chronological order.
 - Forecasts are compared on common rows and a shared peak-demand definition.
 - Beating the weekly-naive baseline alone is not considered a model win.
+- Lower MAE is reported separately from signed bias and underforecast frequency.
 - Raw downloaded data is not republished in Git; the repository stores reproducible code, source hashes, compact result tables, and analytical figures.

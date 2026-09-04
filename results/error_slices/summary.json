@@ -1,0 +1,117 @@
+{
+  "hour": {
+    "rows": 8690,
+    "weakest": {
+      "slice": "8",
+      "improvement_pct": -0.8339909685521084,
+      "eia_mae_mw": 1668.1795580110497,
+      "ml_mae_mw": 1682.0920248640944,
+      "rows": 362
+    },
+    "strongest": {
+      "slice": "1",
+      "improvement_pct": 72.74223602433567,
+      "eia_mae_mw": 5062.955801104972,
+      "ml_mae_mw": 1380.0485424573985,
+      "rows": 362
+    }
+  },
+  "month": {
+    "rows": 8690,
+    "weakest": {
+      "slice": "Jan",
+      "improvement_pct": 26.46137210343717,
+      "eia_mae_mw": 3425.3973154362416,
+      "ml_mae_mw": 2518.9901857775103,
+      "rows": 745
+    },
+    "strongest": {
+      "slice": "Jul",
+      "improvement_pct": 55.161554011636504,
+      "eia_mae_mw": 4815.23252688172,
+      "ml_mae_mw": 2159.075435779971,
+      "rows": 744
+    }
+  },
+  "season": {
+    "rows": 8690,
+    "weakest": {
+      "slice": "DJF",
+      "improvement_pct": 28.820621251584637,
+      "eia_mae_mw": 3349.910433979686,
+      "ml_mae_mw": 2384.4454355350854,
+      "rows": 2166
+    },
+    "strongest": {
+      "slice": "JJA",
+      "improvement_pct": 51.97495300522218,
+      "eia_mae_mw": 4346.323822463768,
+      "ml_mae_mw": 2087.3240582834483,
+      "rows": 2208
+    }
+  },
+  "day_type": {
+    "rows": 8690,
+    "weakest": {
+      "slice": "Weekend",
+      "improvement_pct": 41.075403400911284,
+      "eia_mae_mw": 3098.4767156862745,
+      "ml_mae_mw": 1825.7649054348303,
+      "rows": 2448
+    },
+    "strongest": {
+      "slice": "Weekday",
+      "improvement_pct": 45.328262779988236,
+      "eia_mae_mw": 3382.682473566165,
+      "ml_mae_mw": 1849.3712729354875,
+      "rows": 6242
+    }
+  },
+  "demand_decile": {
+    "rows": 8690,
+    "weakest": {
+      "slice": "D10",
+      "improvement_pct": 36.02633883639569,
+      "eia_mae_mw": 4330.4833141542,
+      "ml_mae_mw": 2770.3687221434307,
+      "rows": 869
+    },
+    "strongest": {
+      "slice": "D2",
+      "improvement_pct": 55.605110105685426,
+      "eia_mae_mw": 3010.512082853855,
+      "ml_mae_mw": 1336.5135244380053,
+      "rows": 869
+    }
+  },
+  "highest_demand_decile": {
+    "slice": "D10",
+    "improvement_pct": 36.02633883639569,
+    "eia_mae_mw": 4330.4833141542,
+    "ml_mae_mw": 2770.3687221434307,
+    "rows": 869
+  },
+  "respondent": "PJM",
+  "test_start": "2025-01-01",
+  "headline_gate": {
+    "passes": true,
+    "status": "passes_minimum_gate",
+    "overall_improvement_pct": 44.20427346845828,
+    "peak_improvement_pct": 36.02633883639569
+  },
+  "model_info": {
+    "train_rows": 25672,
+    "test_rows": 8766,
+    "test_start": "2025-01-01T00:00:00+00:00",
+    "feature_count": 12,
+    "predicted_rows": 8690,
+    "status": "ok"
+  },
+  "common_rows": 8690,
+  "notes": [
+    "All slices use rows with complete actual, EIA, and ML predictions.",
+    "Calendar slices use PJM local_time when available; otherwise UTC period is used.",
+    "Improvement is (EIA MAE - ML MAE) / EIA MAE.",
+    "Positive bias means actual demand exceeded the forecast on average."
+  ]
+}
