@@ -6,6 +6,7 @@ on:
       - analysis/real-eia-evaluation
     paths:
       - .github/workflows/real_eia_evaluation.yml
+      - scripts/generate_readme_figures.py
 
 permissions:
   contents: read
