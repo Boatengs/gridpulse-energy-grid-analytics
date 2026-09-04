@@ -48,6 +48,17 @@ balance_residual_mw =
 
 This is a diagnostic rather than an automatic correction rule. Large deviations can reflect source/reporting issues or accounting differences that deserve inspection.
 
+## Source-data QA anomalies
+
+GridPulse flags suspicious source events without changing the underlying EIA values. The current row-level rules mark:
+
+- an isolated one-hour demand discontinuity when a large step is immediately reversed in the following hour, or
+- a large exact-hour demand step that coincides with a large balance residual.
+
+The default thresholds are a 25% demand step and a 10,000 MW absolute balance residual. These are project QA heuristics, not EIA correction rules.
+
+The November 21, 2024 PJM demand sequence around noon local time is the motivating example: the reported demand falls from roughly 94.8 GW to 56.3 GW and then returns to roughly 95.5 GW while net generation remains near 98 GW. GridPulse retains those reported values and flags the discontinuity for investigation rather than smoothing or deleting it.
+
 ## Stress screening
 
 Current provisional weights:
@@ -63,27 +74,46 @@ If an EIA component is missing, GridPulse reweights over available components ra
 
 ## Forecast validation
 
-Two 2025 benchmarks are currently reported:
+Three forecasts can now be scored on one common future holdout row set:
 
-- EIA-reported day-ahead demand forecast
-- same UTC hour one week earlier
+- EIA-reported day-ahead demand forecast,
+- same UTC hour one week earlier,
+- GridPulse's first ML candidate: a gradient-boosted residual correction to the EIA forecast.
 
 Metrics:
 
-- MAE
-- RMSE
-- sMAPE
-- peak-hour MAE for the top 10% of holdout demand hours
+- MAE,
+- RMSE,
+- sMAPE,
+- peak-hour MAE for the top 10% of holdout demand hours.
 
-The EIA forecast is an operational benchmark reported by the source, not a model trained by GridPulse.
+The peak threshold is shared across models, and all headline metrics use identical rows so a model cannot benefit from being scored on an easier subset.
+
+The weekly-naive forecast remains useful context, but it is **not** the portfolio promotion bar. The minimum model gate requires the ML candidate to beat the EIA-reported day-ahead forecast on both overall MAE and peak-hour MAE. Passing that gate is necessary, not sufficient; rolling-origin stability and error-slice review are still required before claiming a durable improvement.
+
+## First ML candidate
+
+The initial candidate predicts the residual error in EIA's reported day-ahead forecast with `HistGradientBoostingRegressor` and then adds that correction back to `forecast_mw`.
+
+To keep the timing conservative, observed-demand and prior-error features are exact-time lags of at least 48 hours. The current feature set includes:
+
+- EIA-reported `forecast_mw` for the target hour,
+- cyclical hour-of-day, day-of-week, and month terms,
+- exact demand lags at 48, 168, and 336 hours,
+- exact EIA forecast-error lags at 48 and 168 hours.
+
+No contemporaneous generation, interchange, or target-hour actual-demand information is supplied to the model.
+
+QA-flagged source observations remain in the primary benchmark. Any later sensitivity analysis that excludes them must be clearly labeled as a secondary view rather than silently replacing the headline result.
 
 ## Modeling roadmap
 
-1. same-hour-last-week baseline
-2. calendar + lag linear baseline
-3. gradient-boosted trees
-4. rolling-origin validation
-5. peak-hour / hour-of-day / seasonal error slices
-6. SHAP only if the tree model earns its added complexity
+1. same-hour-last-week diagnostic baseline,
+2. EIA-reported day-ahead operational benchmark,
+3. gradient-boosted EIA residual-correction candidate,
+4. rolling-origin validation,
+5. peak-hour / hour-of-day / seasonal error slices,
+6. QA-anomaly sensitivity review,
+7. SHAP only if the tree model earns its added complexity.
 
 Random train/test splits are not appropriate for this time-series problem.

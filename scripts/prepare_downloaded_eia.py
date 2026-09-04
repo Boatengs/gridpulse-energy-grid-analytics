@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from gridpulse.balance import load_balance_exports
-from gridpulse.features import add_operational_features
+from gridpulse.features import add_operational_features, add_qa_flags
 from gridpulse.io import hourly_qa_summary, save_processed
 from gridpulse.stress import add_stress_score
 
@@ -41,7 +41,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     hourly, fuel = load_balance_exports(args.balance_source, respondent=args.respondent)
-    hourly = add_stress_score(add_operational_features(hourly))
+    hourly = add_operational_features(hourly)
+    hourly = add_qa_flags(hourly)
+    hourly = add_stress_score(hourly)
 
     hourly_path, fuel_path = save_processed(hourly, args.output_dir, fuel)
     qa = hourly_qa_summary(hourly)

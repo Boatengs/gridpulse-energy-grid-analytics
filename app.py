@@ -13,12 +13,8 @@ from dotenv import load_dotenv
 
 from gridpulse.demo import make_demo_data
 from gridpulse.eia import EIAClient
-from gridpulse.features import add_operational_features
-from gridpulse.forecasting import (
-    evaluate_reported_forecast,
-    evaluate_seasonal_naive,
-    peak_hour_metrics,
-)
+from gridpulse.features import add_operational_features, add_qa_flags
+from gridpulse.forecasting import evaluate_eia_residual_candidate
 from gridpulse.io import hourly_qa_summary
 from gridpulse.stress import add_stress_score
 
@@ -68,6 +64,13 @@ def load_live_grid_data(api_key: str, respondent: str, start: str, end: str) -> 
         respondent=respondent, start=start, end=end
     )
     return add_stress_score(add_operational_features(raw)) if not raw.empty else raw
+
+
+@st.cache_data(show_spinner=False)
+def run_forecast_benchmark(
+    frame: pd.DataFrame, test_start: str
+) -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
+    return evaluate_eia_residual_candidate(frame, test_start=test_start)
 
 
 def prepare_demo() -> pd.DataFrame:
@@ -162,6 +165,7 @@ else:
 
 if "stress_score" not in df.columns:
     df = add_stress_score(add_operational_features(df))
+df = add_qa_flags(df)
 df["period"] = pd.to_datetime(df["period"], utc=True)
 
 respondents = sorted(df["respondent"].dropna().astype(str).unique())
@@ -183,6 +187,8 @@ with st.sidebar.expander("Data QA", expanded=not demo_mode):
     st.write(f"Missing interchange: **{qa.get('missing_interchange', 0):,}**")
     if "demand_imputed" in qa:
         st.write(f"Imputed demand hours: **{qa.get('demand_imputed', 0):,}**")
+    if "qa_anomaly_hours" in qa:
+        st.write(f"Flagged QA anomaly hours: **{qa.get('qa_anomaly_hours', 0):,}**")
 
 max_hours = max(1, len(subset))
 default_hours = min(24 * 30, max_hours)
@@ -315,6 +321,31 @@ with right:
         "inspectable operating evidence instead of asking reviewers to trust one number."
     )
 
+if "qa_anomaly" in subset and subset["qa_anomaly"].any():
+    st.subheader("Flagged source-data QA anomalies")
+    qa_cols = [
+        c
+        for c in [
+            "period",
+            "local_time",
+            "demand_mw",
+            "forecast_mw",
+            "net_generation_mw",
+            "total_interchange_mw",
+            "qa_demand_step_pct",
+            "balance_residual_mw",
+            "qa_anomaly_reason",
+        ]
+        if c in subset
+    ]
+    qa_events = subset[subset["qa_anomaly"]][qa_cols].tail(20)
+    st.dataframe(qa_events, use_container_width=True, hide_index=True)
+    st.markdown(
+        "**What this shows:** suspicious source-data events are retained exactly as "
+        "reported and flagged for investigation. GridPulse does not silently smooth, "
+        "clip, interpolate, or delete these hours."
+    )
+
 if fuel_subset is not None and not fuel_subset.empty:
     st.subheader("Generation mix")
     fuel_view = fuel_subset[
@@ -367,37 +398,74 @@ if fuel_subset is not None and not fuel_subset.empty:
         "hydro/pumped-storage generation. It is portfolio context, not a reliability score."
     )
 
-if not demo_mode and len(subset) >= 24 * 21:
+if not demo_mode and len(subset) >= 24 * 90:
     years = sorted(subset["period"].dt.year.unique())
-    test_start = pd.Timestamp(f"{years[-1]}-01-01", tz="UTC") if len(years) > 1 else subset["period"].quantile(0.8)
-    naive_holdout, naive_metrics = evaluate_seasonal_naive(subset, test_start)
-    eia_holdout, eia_metrics = evaluate_reported_forecast(subset, test_start)
-    naive_peak = peak_hour_metrics(naive_holdout)
-    eia_peak = peak_hour_metrics(
-        eia_holdout.assign(reported_forecast_pred_mw=eia_holdout["forecast_mw"]),
-        predicted_column="reported_forecast_pred_mw",
+    test_start = (
+        pd.Timestamp(f"{years[-1]}-01-01", tz="UTC")
+        if len(years) > 1
+        else subset["period"].quantile(0.8)
+    )
+    _, benchmark, gate, model_info = run_forecast_benchmark(
+        subset, pd.Timestamp(test_start).isoformat()
     )
 
     st.subheader("Out-of-time forecasting benchmark")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("EIA day-ahead MAE", f"{eia_metrics['mae']:,.0f} MW")
-    m2.metric("Weekly-naive MAE", f"{naive_metrics['mae']:,.0f} MW")
-    m3.metric("EIA peak-hour MAE", f"{eia_peak['mae']:,.0f} MW")
-    m4.metric("Naive peak-hour MAE", f"{naive_peak['mae']:,.0f} MW")
-    compare = pd.DataFrame(
-        {
-            "model": ["EIA day-ahead", "Same hour last week"],
-            "MAE": [eia_metrics["mae"], naive_metrics["mae"]],
-            "RMSE": [eia_metrics["rmse"], naive_metrics["rmse"]],
-            "sMAPE": [eia_metrics["smape"], naive_metrics["smape"]],
-        }
-    )
-    st.dataframe(compare, use_container_width=True, hide_index=True)
-    st.markdown(
-        f"**What this shows:** both forecasts are evaluated only from **{pd.Timestamp(test_start).date()}** "
-        "forward. The weekly-naive model is a deliberately simple benchmark; any future "
-        "machine-learning model must beat it out of time, especially on peak-demand hours."
-    )
+    if benchmark.empty:
+        st.info(
+            "The ML benchmark does not yet have enough complete history to score on a "
+            "common holdout row set."
+        )
+    else:
+        indexed = benchmark.set_index("model")
+        eia = indexed.loc["EIA day-ahead"]
+        ml = indexed.loc["ML-corrected EIA"]
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("EIA day-ahead MAE", f"{eia['mae_mw']:,.0f} MW")
+        m2.metric("ML-corrected EIA MAE", f"{ml['mae_mw']:,.0f} MW")
+        m3.metric("EIA peak-hour MAE", f"{eia['peak_mae_mw']:,.0f} MW")
+        m4.metric("ML peak-hour MAE", f"{ml['peak_mae_mw']:,.0f} MW")
+
+        display = benchmark.rename(
+            columns={
+                "model": "Forecast",
+                "mae_mw": "MAE (MW)",
+                "rmse_mw": "RMSE (MW)",
+                "smape_pct": "sMAPE (%)",
+                "peak_mae_mw": "Top-decile demand MAE (MW)",
+                "rows": "Common holdout rows",
+                "peak_rows": "Peak rows",
+            }
+        ).drop(columns=["peak_threshold_mw"])
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+        overall_gain = gate.get("overall_improvement_pct", float("nan"))
+        peak_gain = gate.get("peak_improvement_pct", float("nan"))
+        if gate.get("passes"):
+            st.success(
+                "Minimum EIA gate cleared: the candidate beats the reported day-ahead "
+                f"forecast on overall MAE ({overall_gain:.1f}% improvement) and "
+                f"peak-hour MAE ({peak_gain:.1f}% improvement)."
+            )
+        else:
+            st.warning(
+                "No portfolio win yet: beating the weekly-naive baseline is not enough. "
+                "The candidate must beat EIA's reported day-ahead forecast on both "
+                "overall and peak-hour MAE."
+            )
+
+        st.markdown(
+            f"**What this shows:** every forecast is scored on the same rows from "
+            f"**{pd.Timestamp(test_start).date()}** forward, with peak hours defined by "
+            "the same top-decile demand threshold. The ML candidate corrects EIA's "
+            "reported forecast using calendar terms plus exact-time observed-demand and "
+            "prior-error lags of at least 48 hours. QA-flagged source observations remain "
+            "in the headline score. Clearing this gate is necessary, not sufficient: "
+            "rolling-origin stability is still required before claiming a durable model win."
+        )
+        st.caption(
+            f"Candidate training rows: {model_info.get('train_rows', 0):,}; "
+            f"scored rows before common-row filtering: {model_info.get('predicted_rows', 0):,}."
+        )
 
 st.caption(
     f"Data source mode: {source_label}. EIA-930 operating values are shown in MW. "
