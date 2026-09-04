@@ -4,6 +4,7 @@ import pandas as pd
 from gridpulse.forecasting import (
     add_day_ahead_model_features,
     benchmark_forecasts,
+    evaluate_eia_residual_candidate,
     evaluate_seasonal_naive,
     promotion_gate,
 )
@@ -69,3 +70,36 @@ def test_promotion_gate_requires_beating_eia_overall_and_at_peak():
     table.loc[table["model"].eq("ML-corrected EIA"), "peak_mae_mw"] = 140.0
     gate = promotion_gate(table)
     assert gate["passes"] is True
+
+
+def test_eia_residual_candidate_runs_end_to_end():
+    periods = pd.date_range("2024-01-01", periods=24 * 160, freq="h", tz="UTC")
+    hour = periods.hour.to_numpy()
+    day = np.arange(len(periods)) / 24
+    demand = 90_000 + 8_000 * np.sin(2 * np.pi * hour / 24) + 1_500 * np.sin(
+        2 * np.pi * day / 7
+    )
+    forecast = demand + 900 + 350 * np.cos(2 * np.pi * hour / 24)
+    df = pd.DataFrame(
+        {
+            "period": periods,
+            "respondent": "PJM",
+            "demand_mw": demand,
+            "forecast_mw": forecast,
+        }
+    )
+
+    holdout, benchmark, gate, info = evaluate_eia_residual_candidate(
+        df, "2024-05-01"
+    )
+
+    assert info["status"] == "ok"
+    assert info["predicted_rows"] > 0
+    assert holdout["ml_eia_corrected_pred_mw"].notna().any()
+    assert set(benchmark["model"]) == {
+        "EIA day-ahead",
+        "Same hour last week",
+        "ML-corrected EIA",
+    }
+    assert benchmark["rows"].nunique() == 1
+    assert gate["status"] in {"passes_minimum_gate", "does_not_beat_eia"}
