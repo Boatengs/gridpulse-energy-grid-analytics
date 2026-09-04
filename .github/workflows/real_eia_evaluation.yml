@@ -9,7 +9,7 @@ on:
       - scripts/generate_readme_figures.py
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   evaluate:
@@ -201,3 +201,22 @@ jobs:
             figures/pjm_2025_peak_demand_forecast.svg
             figures/pjm_2025_forecast_benchmark.svg
             figures/pjm_2025_june_generation_mix.svg
+
+      - name: Publish verified SVGs to results branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin analysis/real-eia-results
+          git worktree add --detach /tmp/gridpulse-results origin/analysis/real-eia-results
+          mkdir -p /tmp/gridpulse-results/figures
+          cp figures/pjm_2025_peak_demand_forecast.svg /tmp/gridpulse-results/figures/
+          cp figures/pjm_2025_forecast_benchmark.svg /tmp/gridpulse-results/figures/
+          cp figures/pjm_2025_june_generation_mix.svg /tmp/gridpulse-results/figures/
+          cd /tmp/gridpulse-results
+          git add figures/pjm_2025_peak_demand_forecast.svg figures/pjm_2025_forecast_benchmark.svg figures/pjm_2025_june_generation_mix.svg
+          if git diff --cached --quiet; then
+            echo "Reviewed SVGs already match the results branch."
+          else
+            git commit -m "Commit verified real PJM figures"
+            git push origin HEAD:analysis/real-eia-results
+          fi
