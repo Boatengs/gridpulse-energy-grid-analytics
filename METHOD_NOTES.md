@@ -135,7 +135,48 @@ The current run produced **13 valid folds**, and the ML candidate beat EIA on bo
 
 The exact headline and fold tables are committed under `results/`.
 
-This supports a durable improvement claim **within this defined PJM experiment**. It does not establish performance for other balancing authorities, other years, revised source snapshots, or a production system with different feature availability.
+## Error-slice methodology
+
+`gridpulse.slicing.forecast_error_slices()` decomposes the **same common 2025 prediction rows** used for EIA-versus-ML comparison. A row is included only when actual demand, EIA forecast, and ML-corrected forecast are all present.
+
+Slices are defined as:
+
+- **hour of day** — PJM local hour when `local_time` is available,
+- **month** — PJM local calendar month,
+- **season** — DJF / MAM / JJA / SON,
+- **day type** — weekday versus weekend,
+- **demand decile** — D1 through D10, assigned from ranked holdout demand so each decile has nearly equal row count.
+
+For each slice GridPulse reports:
+
+```text
+EIA MAE
+ML MAE
+improvement_pct = (EIA MAE - ML MAE) / EIA MAE × 100
+EIA mean signed error
+ML mean signed error
+EIA underforecast rate
+ML underforecast rate
+```
+
+Signed error is `actual - forecast`, so a positive mean bias indicates systematic underforecasting on average. Underforecast rate is the share of rows with positive signed error. These two diagnostics are kept separate from MAE because a model can reduce error magnitude while shifting the direction or frequency of misses.
+
+### Verified slice findings
+
+The 2025 slice run uses all 8,690 common rows and reproduces the headline gate exactly.
+
+- **23 of 24 PJM local hours improve on EIA MAE.** The exception is 08:00, where GridPulse is 0.8% worse (1,682 MW vs 1,668 MW).
+- The strongest hourly improvement is 01:00 at 72.7%.
+- All 12 months improve; July is strongest at 55.2% and January weakest at 26.5%.
+- JJA improves 52.0%; DJF improves 28.8%.
+- Weekdays improve 45.3% and weekends 41.1%.
+- All ten demand deciles improve on MAE. D10 remains the weakest decile at 36.0% improvement.
+
+D10 also exposes a calibration tradeoff: mean positive bias falls from about 2,149 MW to 1,451 MW, but underforecast frequency rises from 63.3% to 69.2%. The model therefore reduces the average size of peak-demand errors without eliminating—and in frequency terms slightly worsening—the low-side tendency during the highest-demand hours.
+
+The committed aggregate evidence is in `results/error_slices/` and can be regenerated with `scripts/generate_error_slices.py`.
+
+This supports a durable improvement claim **within this defined PJM experiment**, but not a claim of universal superiority in every operating slice. It does not establish performance for other balancing authorities, other years, revised source snapshots, or a production system with different feature availability.
 
 ## Modeling roadmap
 
@@ -145,13 +186,15 @@ Completed for the current candidate:
 2. weekly-naive diagnostic baseline,
 3. gradient-boosted EIA residual-correction candidate,
 4. rolling-origin validation,
-5. QA-anomaly scoring sensitivity.
+5. QA-anomaly scoring sensitivity,
+6. hour/month/season/day-type/demand-decile error slicing.
 
 Useful next analytical extensions:
 
-1. hour-of-day, season, weekday/weekend, and demand-decile error slices,
-2. calibration of feature timing against a more explicit forecast-issuance clock if available,
-3. broader balancing-authority replication,
-4. SHAP only if explanation work is useful after the model has already earned its complexity.
+1. investigate the 08:00 local-time regression,
+2. test peak-focused calibration or asymmetric-loss objectives for D10 underforecast frequency,
+3. calibrate feature timing against a more explicit forecast-issuance clock if available,
+4. replicate across additional balancing authorities,
+5. use SHAP only if explanation work remains decision-relevant after robustness testing.
 
 Random train/test splits are not appropriate for this time-series problem.
