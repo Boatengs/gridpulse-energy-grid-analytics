@@ -121,18 +121,49 @@ summary = load_summary(str(SUMMARY_PATH))
 tables = {label: load_table(str(path)) for label, path in TABLE_PATHS.items()}
 
 headline = summary.get("headline_gate", {})
-rolling_context = (
+hour_table = tables["Hour of day"]
+decile_table = tables["Demand decile"]
+positive_hours = int((hour_table["improvement_pct"] > 0).sum())
+weak_hour = hour_table.loc[hour_table["improvement_pct"].idxmin()]
+strong_hour = hour_table.loc[hour_table["improvement_pct"].idxmax()]
+d10_row = decile_table[decile_table["slice"].astype(str).eq("D10")].iloc[0]
+
+st.info(
     "This page is a diagnostic decomposition of the same 2025 holdout model that cleared the EIA promotion gate. "
     "Slice results do not replace the headline common-row benchmark or rolling-origin validation."
 )
-st.info(rolling_context)
 
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("Common 2025 rows", f"{summary.get('common_rows', 0):,}")
 m2.metric("Overall MAE gain vs EIA", format_gain(headline.get("overall_improvement_pct")))
-m3.metric("Peak MAE gain vs EIA", format_gain(headline.get("peak_improvement_pct")))
-d10 = summary.get("highest_demand_decile", {})
-m4.metric("Highest-demand decile gain", format_gain(d10.get("improvement_pct")))
+m3.metric("Hourly slices beating EIA", f"{positive_hours}/24")
+m4.metric("Peak-decile MAE gain", format_gain(float(d10_row["improvement_pct"])))
+
+st.subheader("Decision-relevant exceptions")
+if float(weak_hour["improvement_pct"]) <= 0:
+    st.warning(
+        f"**{int(weak_hour['slice']):02d}:00 PJM local is the one hourly regression:** "
+        f"EIA MAE is {weak_hour['eia_mae_mw']:,.0f} MW versus "
+        f"{weak_hour['ml_mae_mw']:,.0f} MW for GridPulse ML "
+        f"({weak_hour['improvement_pct']:.1f}% improvement). The portfolio claim should therefore be "
+        "broad improvement, not universal superiority in every hourly slice."
+    )
+
+st.warning(
+    "**Peak-demand asymmetry:** in D10, GridPulse reduces MAE from "
+    f"{d10_row['eia_mae_mw']:,.0f} to {d10_row['ml_mae_mw']:,.0f} MW "
+    f"({d10_row['improvement_pct']:.1f}% better), but the share of hours where actual demand exceeds the "
+    f"forecast rises from {d10_row['eia_underforecast_rate_pct']:.1f}% to "
+    f"{d10_row['ml_underforecast_rate_pct']:.1f}%. Mean low-side bias still improves from "
+    f"{d10_row['eia_bias_mw']:,.0f} to {d10_row['ml_bias_mw']:,.0f} MW. "
+    "So peak misses are smaller on average but somewhat more frequently on the low side."
+)
+
+st.success(
+    f"The strongest hourly correction occurs at {int(strong_hour['slice']):02d}:00 PJM local: "
+    f"MAE falls from {strong_hour['eia_mae_mw']:,.0f} to {strong_hour['ml_mae_mw']:,.0f} MW "
+    f"({strong_hour['improvement_pct']:.1f}% improvement)."
+)
 
 st.subheader("Where does the advantage widen or narrow?")
 summary_rows = []
@@ -203,12 +234,11 @@ st.caption(
 )
 
 st.subheader("Highest-demand decile")
-if d10:
-    a, b, c, d = st.columns(4)
-    a.metric("EIA MAE", format_mw(d10.get("eia_mae_mw")))
-    b.metric("GridPulse ML MAE", format_mw(d10.get("ml_mae_mw")))
-    c.metric("Improvement", format_gain(d10.get("improvement_pct")))
-    d.metric("Rows", f"{d10.get('rows', 0):,}")
+a, b, c, d = st.columns(4)
+a.metric("EIA MAE", format_mw(float(d10_row["eia_mae_mw"])))
+b.metric("GridPulse ML MAE", format_mw(float(d10_row["ml_mae_mw"])))
+c.metric("EIA underforecast rate", f"{d10_row['eia_underforecast_rate_pct']:.1f}%")
+d.metric("ML underforecast rate", f"{d10_row['ml_underforecast_rate_pct']:.1f}%")
 
 st.warning(
     "These slices describe the frozen PJM 2025 holdout only. They do not establish the same pattern for other "
