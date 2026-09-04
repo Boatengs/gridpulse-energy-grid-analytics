@@ -73,9 +73,10 @@ def test_build_replay_figure_has_synchronized_browser_animation() -> None:
 
 def test_build_replay_figure_keeps_dark_theme_labels_visible() -> None:
     fig = build_replay_figure(sample_frame(8), max_frames=8, frame_ms=100)
-    assert fig.layout.font.color == "#EAF6FF"
-    assert fig.layout.xaxis.tickfont.color == "#EAF6FF"
-    assert fig.layout.yaxis.tickfont.color == "#EAF6FF"
+    theme = fig.layout.template.layout
+    assert theme.font.color == "#EAF6FF"
+    assert theme.xaxis.tickfont.color == "#EAF6FF"
+    assert theme.yaxis.tickfont.color == "#EAF6FF"
 
 
 def test_build_replay_figure_rejects_extreme_speed() -> None:
