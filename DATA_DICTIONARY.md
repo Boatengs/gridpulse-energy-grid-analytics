@@ -25,10 +25,18 @@ GridPulse's primary downloaded EIA-930 BALANCE workflow uses **MW** for hourly o
 | `abs_forecast_error_pct` | Absolute forecast error divided by actual demand |
 | `interchange_share` | Absolute interchange divided by absolute demand |
 | `balance_residual_mw` | Net generation − demand − total interchange; used as a QA diagnostic |
+| `qa_demand_step_pct` | Exact-hour demand change used by the source-data QA rules |
+| `qa_large_demand_step` | Whether the exact-hour demand step exceeds the current QA threshold |
+| `qa_isolated_demand_discontinuity` | Whether a large demand step is immediately reversed in the following hour |
+| `qa_large_balance_residual` | Whether the absolute balance residual exceeds the current QA threshold |
+| `qa_anomaly` | Combined non-mutating QA flag for suspicious source-data events |
+| `qa_anomaly_reason` | Plain-language reason attached to a flagged QA hour |
 | `stress_score` | 0–100 transparent operational screening score |
 | `stress_band` | Normal/elevated/high/very-high screening band |
 | `stress_components_available` | Number of non-missing score components available for that hour |
 | `stress_component_weight` | Total component weight represented in that hour's score |
+
+QA fields are diagnostic. They do not replace, smooth, clip, interpolate, or delete the reported EIA operating values.
 
 ## Fuel table
 
