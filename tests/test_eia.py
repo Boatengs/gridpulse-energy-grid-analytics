@@ -13,16 +13,17 @@ def test_get_all_pages_until_total(monkeypatch):
     def fake_get(self, route, params):
         offset = int(dict(params)["offset"])
         calls.append(offset)
-        if offset == 0:
-            data = [
+        data = (
+            [
                 {"period": "2025-01-01T00", "respondent": "PJM", "respondent-name": "PJM", "type": "D", "value": "100"},
                 {"period": "2025-01-01T00", "respondent": "PJM", "respondent-name": "PJM", "type": "DF", "value": "95"},
             ]
-        else:
-            data = [
+            if offset == 0
+            else [
                 {"period": "2025-01-01T01", "respondent": "PJM", "respondent-name": "PJM", "type": "D", "value": "110"},
                 {"period": "2025-01-01T01", "respondent": "PJM", "respondent-name": "PJM", "type": "DF", "value": "108"},
             ]
+        )
         return {"response": {"total": "4", "data": data}}
 
     monkeypatch.setattr(EIAClient, "_get", fake_get)
@@ -30,9 +31,8 @@ def test_get_all_pages_until_total(monkeypatch):
     result = client.region_data("PJM", "2025-01-01T00", "2025-01-01T01", types=("D", "DF"))
 
     assert calls == [0, 2]
-    assert len(result) == 2
-    assert result["demand_mwh"].tolist() == [100, 110]
-    assert result["forecast_mwh"].tolist() == [95, 108]
+    assert result["demand_mw"].tolist() == [100, 110]
+    assert result["forecast_mw"].tolist() == [95, 108]
     assert pd.api.types.is_datetime64_any_dtype(result["period"])
 
 
