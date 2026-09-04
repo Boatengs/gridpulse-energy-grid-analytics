@@ -4,6 +4,8 @@
 
 The current production snapshot uses eight official EIA-930 six-month BALANCE CSV files covering PJM from 2022 through 2025 local time. Exact filenames and SHA-256 hashes are recorded in `DATASET_MANIFEST.md`.
 
+The real-data evaluation reproduced those eight files from EIA's official six-month archive and verified every file against the manifest hash before preparation or modeling. The compact verification record is committed under `results/source_verification.json`.
+
 ## Why the downloaded path is primary
 
 A frozen source snapshot makes model comparisons, README evidence, and reviewer reproduction stable even if preliminary EIA observations are revised later. The live API client remains available for recent-data checks.
@@ -59,6 +61,8 @@ The default thresholds are a 25% demand step and a 10,000 MW absolute balance re
 
 The November 21, 2024 PJM demand sequence around noon local time is the motivating example: the reported demand falls from roughly 94.8 GW to 56.3 GW and then returns to roughly 95.5 GW while net generation remains near 98 GW. GridPulse retains those reported values and flags the discontinuity for investigation rather than smoothing or deleting it.
 
+The prepared frozen snapshot contains one row meeting the combined anomaly rule: 2024-11-21 12:00 PJM local time, with demand 56,260 MW, day-ahead forecast 89,661 MW, net generation 98,308 MW, and total interchange 2,152 MW.
+
 ## Stress screening
 
 Current provisional weights:
@@ -74,7 +78,7 @@ If an EIA component is missing, GridPulse reweights over available components ra
 
 ## Forecast validation
 
-Three forecasts can now be scored on one common future holdout row set:
+Three forecasts are scored on common future rows:
 
 - EIA-reported day-ahead demand forecast,
 - same UTC hour one week earlier,
@@ -89,7 +93,7 @@ Metrics:
 
 The peak threshold is shared across models, and all headline metrics use identical rows so a model cannot benefit from being scored on an easier subset.
 
-The weekly-naive forecast remains useful context, but it is **not** the portfolio promotion bar. The minimum model gate requires the ML candidate to beat the EIA-reported day-ahead forecast on both overall MAE and peak-hour MAE. Passing that gate is necessary, not sufficient; rolling-origin stability and error-slice review are still required before claiming a durable improvement.
+The weekly-naive forecast remains useful context, but it is **not** the portfolio promotion bar. The minimum model gate requires the ML candidate to beat the EIA-reported day-ahead forecast on both overall MAE and peak-hour MAE.
 
 ## First ML candidate
 
@@ -104,16 +108,50 @@ To keep the timing conservative, observed-demand and prior-error features are ex
 
 No contemporaneous generation, interchange, or target-hour actual-demand information is supplied to the model.
 
-QA-flagged source observations remain in the primary benchmark. Any later sensitivity analysis that excludes them must be clearly labeled as a secondary view rather than silently replacing the headline result.
+QA-flagged source observations remain in the primary benchmark. Any sensitivity analysis that excludes them is explicitly labeled as a secondary scoring view.
+
+## Verified 2025 result
+
+The frozen PJM evaluation uses 2025 as the future holdout. On the 8,690 common rows where EIA, weekly naive, and the ML candidate can all be scored, the shared top-decile demand threshold is 119,360.1 MW.
+
+| Forecast | MAE (MW) | RMSE (MW) | sMAPE | Peak MAE (MW) |
+|---|---:|---:|---:|---:|
+| EIA day-ahead | 3,302.6 | 4,148.3 | 3.49% | 4,330.5 |
+| Same hour last week | 8,455.1 | 11,616.9 | 8.43% | 14,342.2 |
+| ML-corrected EIA | **1,842.7** | **2,442.2** | **1.89%** | **2,770.4** |
+
+Relative to EIA, the candidate reduces overall MAE by **44.2%** and peak-hour MAE by **36.0%**. That clears the minimum EIA promotion gate.
+
+## Rolling-origin stability
+
+A single holdout win is not treated as sufficient evidence. GridPulse also runs expanding-window 30-day future folds across 2025.
+
+The current run produced **13 valid folds**, and the ML candidate beat EIA on both overall MAE and peak-hour MAE in **13 of 13**.
+
+- median overall improvement: **43.7%**,
+- median peak improvement: **25.3%**,
+- worst-fold overall improvement: **26.9%**,
+- worst-fold peak improvement: **15.1%**.
+
+The exact headline and fold tables are committed under `results/`.
+
+This supports a durable improvement claim **within this defined PJM experiment**. It does not establish performance for other balancing authorities, other years, revised source snapshots, or a production system with different feature availability.
 
 ## Modeling roadmap
 
-1. same-hour-last-week diagnostic baseline,
-2. EIA-reported day-ahead operational benchmark,
+Completed for the current candidate:
+
+1. EIA-reported day-ahead operational benchmark,
+2. weekly-naive diagnostic baseline,
 3. gradient-boosted EIA residual-correction candidate,
 4. rolling-origin validation,
-5. peak-hour / hour-of-day / seasonal error slices,
-6. QA-anomaly sensitivity review,
-7. SHAP only if the tree model earns its added complexity.
+5. QA-anomaly scoring sensitivity.
+
+Useful next analytical extensions:
+
+1. hour-of-day, season, weekday/weekend, and demand-decile error slices,
+2. calibration of feature timing against a more explicit forecast-issuance clock if available,
+3. broader balancing-authority replication,
+4. SHAP only if explanation work is useful after the model has already earned its complexity.
 
 Random train/test splits are not appropriate for this time-series problem.
