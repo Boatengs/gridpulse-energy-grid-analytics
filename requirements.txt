@@ -9,3 +9,8 @@ pyarrow>=18.0
 matplotlib>=3.9
 pyyaml>=6.0
 pytest>=8.0
+
+# Streamlit Community Cloud installs requirements.txt but does not otherwise
+# install this repository's src-layout package. Installing the project makes
+# `import gridpulse` available to app.py and multipage modules.
+-e .
