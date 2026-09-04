@@ -1,0 +1,20 @@
+{
+  "rows": 35064,
+  "respondents": 1,
+  "start": "2022-01-01T06:00:00+00:00",
+  "end": "2026-01-01T05:00:00+00:00",
+  "duplicate_hours": 0,
+  "missing_hour_slots": 0,
+  "missing_demand": 3,
+  "missing_forecast": 121,
+  "missing_generation": 3,
+  "missing_interchange": 120,
+  "nonpositive_demand": 0,
+  "demand_imputed": 117,
+  "generation_imputed": 117,
+  "interchange_imputed": 0,
+  "max_abs_balance_residual_mw": 39896.0,
+  "balance_residual_gt_10000_mw": 17,
+  "qa_anomaly_hours": 1,
+  "qa_isolated_demand_discontinuities": 1
+}
