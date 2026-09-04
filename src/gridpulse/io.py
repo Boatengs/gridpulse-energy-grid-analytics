@@ -207,6 +207,12 @@ def hourly_qa_summary(df: pd.DataFrame) -> dict[str, int | float | str | None]:
         residual = pd.to_numeric(work["balance_residual_mw"], errors="coerce").abs()
         summary["max_abs_balance_residual_mw"] = float(residual.max())
         summary["balance_residual_gt_10000_mw"] = int((residual > 10_000).sum())
+    if "qa_anomaly" in work:
+        summary["qa_anomaly_hours"] = int(work["qa_anomaly"].fillna(False).astype(bool).sum())
+    if "qa_isolated_demand_discontinuity" in work:
+        summary["qa_isolated_demand_discontinuities"] = int(
+            work["qa_isolated_demand_discontinuity"].fillna(False).astype(bool).sum()
+        )
     return summary
 
 
