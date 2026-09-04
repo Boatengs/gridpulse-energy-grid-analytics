@@ -5,9 +5,14 @@ __pycache__/
 .env
 .DS_Store
 .streamlit/secrets.toml
-data/raw/*.csv
-data/raw/*.parquet
-data/processed/*.csv
-data/processed/*.parquet
+
+# Keep EIA source and analytical data local. The repository stores code and reproducible figures.
+data/raw/**/*.csv
+data/raw/**/*.xlsx
+data/raw/**/*.parquet
+data/processed/**/*.csv
+data/processed/**/*.parquet
+data/processed/qa_summary.json
+
 !data/raw/.gitkeep
 !data/processed/.gitkeep
