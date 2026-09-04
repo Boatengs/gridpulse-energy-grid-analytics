@@ -9,10 +9,10 @@ import requests
 
 BASE_URL = "https://api.eia.gov/v2/electricity/rto"
 REGION_TYPES = {
-    "D": "demand_mwh",
-    "DF": "forecast_mwh",
-    "NG": "net_generation_mwh",
-    "TI": "total_interchange_mwh",
+    "D": "demand_mw",
+    "DF": "forecast_mw",
+    "NG": "net_generation_mw",
+    "TI": "total_interchange_mw",
 }
 
 
@@ -23,7 +23,6 @@ class EIAClient:
     page_size: int = 5000
 
     def _get(self, route: str, params: list[tuple[str, str]]) -> dict:
-        # The API key is supplied at runtime from environment/secrets, never source control.
         query = [("api_key", self.api_key), *params]
         response = requests.get(f"{BASE_URL}/{route}/data/", params=query, timeout=self.timeout)
         response.raise_for_status()
@@ -33,34 +32,24 @@ class EIAClient:
         return payload
 
     def _get_all(self, route: str, params: list[tuple[str, str]]) -> pd.DataFrame:
-        """Page through an EIA v2 route without silently truncating long requests."""
         frames: list[pd.DataFrame] = []
         offset = 0
         total: int | None = None
-
         while total is None or offset < total:
-            page_params = [
-                *params,
-                ("offset", str(offset)),
-                ("length", str(self.page_size)),
-            ]
-            payload = self._get(route, page_params)
+            payload = self._get(
+                route,
+                [*params, ("offset", str(offset)), ("length", str(self.page_size))],
+            )
             response = payload["response"]
             page = pd.DataFrame(response["data"])
             if page.empty:
                 break
-
             frames.append(page)
             total = int(response.get("total", len(page)))
             offset += len(page)
-
-            # Defensive stop in case the API reports a larger total but returns a short final page.
             if len(page) < self.page_size:
                 break
-
-        if not frames:
-            return pd.DataFrame()
-        return pd.concat(frames, ignore_index=True)
+        return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def region_data(
         self,
@@ -87,7 +76,6 @@ class EIAClient:
         rows = self._get_all("region-data", params)
         if rows.empty:
             return rows
-
         rows["period"] = pd.to_datetime(rows["period"], utc=True, errors="coerce")
         rows["value"] = pd.to_numeric(rows["value"], errors="coerce")
         rows = rows[rows["type"].isin(REGION_TYPES)].copy()
