@@ -1,0 +1,202 @@
+name: GridPulse Real EIA Evaluation
+
+on:
+  push:
+    branches:
+      - analysis/real-eia-evaluation
+    paths:
+      - .github/workflows/real_eia_evaluation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GridPulse
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Fetch and verify frozen EIA-930 snapshot
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import io
+          import json
+          import urllib.request
+          import zipfile
+          from pathlib import Path
+
+          target_dir = Path("data/raw/eia930")
+          target_dir.mkdir(parents=True, exist_ok=True)
+          verify_log = []
+
+          files = {
+              "EIA930_BALANCE_2022_Jan_Jun.csv": "d3d315a0c29d9527a1c64cf6ddcdcc5c0b7281fddd99199bd70f06d242e503d5",
+              "EIA930_BALANCE_2022_Jul_Dec.csv": "267575c29ef40f386bcf3bc3993013b9ce13a3a154b89b702559a75dd742976d",
+              "EIA930_BALANCE_2023_Jan_Jun.csv": "a0e14e9c07ab4cc1de3e384c7be890b0c61d9de3fe04ad3ae5ec739f1f35ec1b",
+              "EIA930_BALANCE_2023_Jul_Dec.csv": "c719fc1b513eec8982ce209b6e3173fc64b2d0d243f83d3bf0d8d1adf6222de2",
+              "EIA930_BALANCE_2024_Jan_Jun.csv": "26768c495c3ba987e29d79df2e40d4e741f9dbcff086f53c12ff774465756a10",
+              "EIA930_BALANCE_2024_Jul_Dec.csv": "a602a8e577cfdd2fa3083413eaa4dd8ba7f0d2b26a2986f8f6d22917465ea49f",
+              "EIA930_BALANCE_2025_Jan_Jun.csv": "fac4bb991dfa1dab3b4b35300ccab54ac99be13a40ce91954db8ddafb2816242",
+              "EIA930_BALANCE_2025_Jul_Dec.csv": "1146158b972439db7c7f4cc7d0491e07644ddbf244d03b8ecb44cb2c833d10f1",
+          }
+
+          half_map = {
+              "EIA930_BALANCE_2022_Jan_Jun.csv": "eia930-2022half1.zip",
+              "EIA930_BALANCE_2022_Jul_Dec.csv": "eia930-2022half2.zip",
+              "EIA930_BALANCE_2023_Jan_Jun.csv": "eia930-2023half1.zip",
+              "EIA930_BALANCE_2023_Jul_Dec.csv": "eia930-2023half2.zip",
+              "EIA930_BALANCE_2024_Jan_Jun.csv": "eia930-2024half1.zip",
+              "EIA930_BALANCE_2024_Jul_Dec.csv": "eia930-2024half2.zip",
+              "EIA930_BALANCE_2025_Jan_Jun.csv": "eia930-2025half1.zip",
+              "EIA930_BALANCE_2025_Jul_Dec.csv": "eia930-2025half2.zip",
+          }
+
+          def sha256(data: bytes) -> str:
+              return hashlib.sha256(data).hexdigest()
+
+          def fetch(url: str) -> bytes:
+              req = urllib.request.Request(url, headers={"User-Agent": "GridPulse reproducibility workflow"})
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return response.read()
+
+          for filename, expected in files.items():
+              official_url = f"https://www.eia.gov/electricity/gridmonitor/sixMonthFiles/{filename}"
+              source = None
+              data = None
+              official_hash = None
+              official_error = None
+
+              try:
+                  candidate = fetch(official_url)
+                  official_hash = sha256(candidate)
+                  if official_hash == expected:
+                      data = candidate
+                      source = "EIA official sixMonthFiles"
+              except Exception as exc:
+                  official_error = f"{type(exc).__name__}: {exc}"
+
+              if data is None:
+                  archive_name = half_map[filename]
+                  archive_url = f"https://zenodo.org/records/18115102/files/{archive_name}?download=1"
+                  archive = fetch(archive_url)
+                  with zipfile.ZipFile(io.BytesIO(archive)) as zf:
+                      matching = []
+                      for member in zf.namelist():
+                          if member.lower().endswith(".csv"):
+                              payload = zf.read(member)
+                              digest = sha256(payload)
+                              if digest == expected:
+                                  matching.append((member, payload))
+                      if len(matching) == 1:
+                          member, data = matching[0]
+                          source = f"PUDL Zenodo v58 raw archive member {member}"
+                      elif len(matching) > 1:
+                          raise RuntimeError(f"Multiple archive members matched {filename}: {[m[0] for m in matching]}")
+
+              if data is None:
+                  raise RuntimeError(
+                      f"Could not reproduce {filename}. expected={expected} "
+                      f"official_hash={official_hash} official_error={official_error}"
+                  )
+
+              actual = sha256(data)
+              if actual != expected:
+                  raise RuntimeError(f"Hash mismatch for {filename}: {actual} != {expected}")
+
+              (target_dir / filename).write_bytes(data)
+              verify_log.append(
+                  {
+                      "file": filename,
+                      "sha256": actual,
+                      "bytes": len(data),
+                      "source": source,
+                  }
+              )
+              print(f"VERIFIED {filename}: {actual} ({source})")
+
+          Path("source_verification.json").write_text(json.dumps(verify_log, indent=2) + "\n")
+          PY
+
+      - name: Prepare PJM analytical data
+        run: |
+          python scripts/prepare_downloaded_eia.py \
+            --balance-source data/raw/eia930 \
+            --respondent PJM \
+            --output-dir data/processed
+
+      - name: Run headline and rolling-origin model evaluation
+        run: |
+          python scripts/evaluate_models.py \
+            --hourly-path data/processed/gridpulse_hourly.parquet \
+            --respondent PJM \
+            --test-start 2025-01-01 \
+            --horizon-days 30 \
+            --step-days 30 \
+            --output-dir data/processed/model_evaluation
+
+      - name: Generate real README figures
+        run: python scripts/generate_readme_figures.py
+
+      - name: Print decisive results and QA evidence
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import pandas as pd
+
+          summary = json.loads(Path("data/processed/model_evaluation/model_evaluation_summary.json").read_text())
+          headline = pd.read_csv("data/processed/model_evaluation/headline_benchmark.csv")
+          folds = pd.read_csv("data/processed/model_evaluation/rolling_origin_folds.csv")
+          hourly = pd.read_parquet("data/processed/gridpulse_hourly.parquet")
+          hourly["local_time"] = pd.to_datetime(hourly["local_time"], errors="coerce")
+
+          print("=== HEADLINE BENCHMARK ===")
+          print(headline.to_string(index=False))
+          print("\n=== PROMOTION GATE ===")
+          print(json.dumps(summary["headline_gate"], indent=2))
+          print("\n=== ROLLING-ORIGIN SUMMARY ===")
+          print(json.dumps(summary["rolling_origin"], indent=2))
+          print("\n=== ROLLING FOLDS ===")
+          print(folds.to_string(index=False))
+
+          if "qa_anomaly" in hourly.columns:
+              anomalies = hourly[hourly["qa_anomaly"].fillna(False).astype(bool)]
+              print(f"\nQA anomaly hours: {len(anomalies)}")
+              cols = [c for c in ["local_time", "demand_mw", "forecast_mw", "net_generation_mw", "total_interchange_mw", "qa_anomaly_reason"] if c in anomalies]
+              print(anomalies[cols].head(20).to_string(index=False))
+
+          nov21 = hourly[
+              (hourly["local_time"] >= pd.Timestamp("2024-11-21 10:00"))
+              & (hourly["local_time"] <= pd.Timestamp("2024-11-21 14:00"))
+          ]
+          print("\n=== 2024-11-21 QA WINDOW ===")
+          cols = [c for c in ["local_time", "demand_mw", "forecast_mw", "net_generation_mw", "total_interchange_mw", "qa_anomaly", "qa_anomaly_reason"] if c in nov21]
+          print(nov21[cols].to_string(index=False))
+          PY
+
+      - name: Upload evaluation reports and figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: gridpulse-real-eia-results
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            source_verification.json
+            data/processed/qa_summary.json
+            data/processed/model_evaluation/
+            figures/pjm_2025_peak_demand_forecast.svg
+            figures/pjm_2025_forecast_benchmark.svg
+            figures/pjm_2025_june_generation_mix.svg
