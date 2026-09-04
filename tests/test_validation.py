@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from gridpulse.validation import rolling_origin_evaluation, summarize_rolling_origin
 
@@ -58,7 +59,7 @@ def test_rolling_origin_summary_reports_stability_without_overclaiming():
     assert summary["folds"] == 3
     assert summary["valid_folds"] == 3
     assert summary["folds_beating_eia"] == 1
-    assert summary["pass_rate_pct"] == 100 / 3
+    assert summary["pass_rate_pct"] == pytest.approx(100 / 3)
     assert summary["all_valid_folds_beat_eia"] is False
     assert summary["worst_overall_improvement_pct"] == -1.0
     assert summary["worst_peak_improvement_pct"] == -2.0
