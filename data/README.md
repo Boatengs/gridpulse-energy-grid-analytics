@@ -1,36 +1,32 @@
-# GridPulse data folders
+# Data folders
 
-GridPulse now treats a frozen downloaded EIA-930 dataset as the recommended production input.
+Raw EIA files and processed analytical tables are intentionally excluded from Git because the source snapshot is large.
 
-## Recommended raw layout
+## Current source snapshot
+
+The project uses eight official six-month `EIA930_BALANCE` CSV files for PJM covering 2022–2025. Exact filenames and SHA-256 hashes are recorded in `../DATASET_MANIFEST.md`.
+
+Place them under:
 
 ```text
 data/raw/eia930/
-├── region/
-│   ├── pjm_2022_h1.csv
-│   ├── pjm_2022_h2.csv
-│   └── ...
-└── fuel/
-    ├── pjm_fuel_2022_h1.csv
-    ├── pjm_fuel_2022_h2.csv
-    └── ...
 ```
 
-The filenames do not matter. The preparation script reads every CSV in the supplied directory, so EIA download chunks can be kept as separate source files.
-
-## Prepare the analytical layer
+Then run:
 
 ```bash
 python scripts/prepare_downloaded_eia.py \
-  --region-source data/raw/eia930/region \
-  --fuel-source data/raw/eia930/fuel \
+  --balance-source data/raw/eia930 \
+  --respondent PJM \
   --output-dir data/processed
 ```
 
-Outputs:
+Expected outputs:
 
-- `data/processed/gridpulse_hourly.parquet`
-- `data/processed/gridpulse_fuel_mix.parquet`
-- `data/processed/qa_summary.json`
+```text
+data/processed/gridpulse_hourly.parquet
+data/processed/gridpulse_fuel_mix.parquet
+data/processed/qa_summary.json
+```
 
-Raw and processed data files are intentionally ignored by Git. The repository stores code, tests, documentation, and code-derived figures rather than republishing large EIA exports.
+Do not manually edit the raw CSV files. If EIA republishes a revised snapshot, preserve the new files separately and update the manifest hashes before replacing analytical evidence.
