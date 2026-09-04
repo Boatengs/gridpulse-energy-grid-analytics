@@ -1,0 +1,44 @@
+{
+  "respondent": "PJM",
+  "test_start": "2025-01-01",
+  "peak_quantile": 0.9,
+  "horizon_days": 30,
+  "step_days": 30,
+  "headline_gate": {
+    "passes": true,
+    "status": "passes_minimum_gate",
+    "overall_improvement_pct": 44.20427346845828,
+    "peak_improvement_pct": 36.02633883639569
+  },
+  "model_info": {
+    "train_rows": 25672,
+    "test_rows": 8766,
+    "test_start": "2025-01-01T00:00:00+00:00",
+    "feature_count": 12,
+    "predicted_rows": 8690,
+    "status": "ok"
+  },
+  "rolling_origin": {
+    "folds": 13,
+    "valid_folds": 13,
+    "folds_beating_eia": 13,
+    "pass_rate_pct": 100.0,
+    "all_valid_folds_beat_eia": true,
+    "median_overall_improvement_pct": 43.717074188933836,
+    "median_peak_improvement_pct": 25.297451300769115,
+    "worst_overall_improvement_pct": 26.896434893628523,
+    "worst_peak_improvement_pct": 15.107358923456982
+  },
+  "qa_flag_scoring_sensitivity_gate": {
+    "passes": true,
+    "status": "passes_minimum_gate",
+    "overall_improvement_pct": 44.20427346845828,
+    "peak_improvement_pct": 36.02633883639569
+  },
+  "notes": [
+    "Headline and rolling-origin comparisons score EIA, weekly naive, and ML on common rows.",
+    "QA-flagged observations remain in the primary benchmark.",
+    "The QA sensitivity view excludes flagged holdout rows from scoring only; it does not retrain the model or alter source values.",
+    "Rolling-origin results are reported transparently; no new automatic durable-win rule is imposed beyond the existing EIA minimum gate."
+  ]
+}

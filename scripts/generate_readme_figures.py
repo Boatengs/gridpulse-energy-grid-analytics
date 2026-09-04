@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from gridpulse.forecasting import add_seasonal_naive_prediction, regression_metrics
+from gridpulse.forecasting import evaluate_eia_residual_candidate
 
 HOURLY = Path("data/processed/gridpulse_hourly.parquet")
 FUEL = Path("data/processed/gridpulse_fuel_mix.parquet")
@@ -39,6 +39,12 @@ def main() -> None:
     hourly["local_time"] = pd.to_datetime(hourly["local_time"])
     fuel["period"] = pd.to_datetime(fuel["period"], utc=True)
 
+    holdout, benchmark, _, _ = evaluate_eia_residual_candidate(
+        hourly,
+        test_start="2025-01-01",
+        peak_quantile=0.90,
+    )
+
     p2025 = hourly[hourly["local_time"].dt.year.eq(2025)].copy()
     peak = p2025.loc[p2025["demand_mw"].idxmax()]
     peak_period = peak["period"]
@@ -47,47 +53,63 @@ def main() -> None:
             peak_period - pd.Timedelta(days=3),
             peak_period + pd.Timedelta(days=3),
         )
-    ]
+    ].copy()
+    week = week.merge(
+        holdout[["period", "ml_eia_corrected_pred_mw"]],
+        on="period",
+        how="left",
+        validate="one_to_one",
+    )
 
     fig, ax = plt.subplots(figsize=(11, 5.8), constrained_layout=True)
     ax.plot(week["period"], week["demand_mw"], label="Actual demand")
     ax.plot(week["period"], week["forecast_mw"], label="EIA day-ahead forecast")
+    ax.plot(
+        week["period"],
+        week["ml_eia_corrected_pred_mw"],
+        label="GridPulse ML-corrected EIA",
+    )
     ax.axvline(peak_period, linestyle="--", linewidth=1)
-    ax.set_title("PJM demand vs day-ahead forecast around the 2025 annual peak", pad=14)
+    ax.set_title(
+        "PJM demand vs EIA and GridPulse forecasts around the 2025 annual peak",
+        pad=14,
+    )
     ax.set_ylabel("MW")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %d"))
     ax.legend(
         loc="upper center",
         bbox_to_anchor=(0.5, -0.12),
-        ncol=2,
+        ncol=3,
         frameon=False,
     )
     _save_svg(fig, "pjm_2025_peak_demand_forecast.svg")
 
-    work = add_seasonal_naive_prediction(hourly)
-    holdout = work[work["local_time"].dt.year.eq(2025)].copy()
-    eia = regression_metrics(holdout["demand_mw"], holdout["forecast_mw"])
-    naive = regression_metrics(holdout["demand_mw"], holdout["seasonal_naive_pred_mw"])
-    threshold = holdout["demand_mw"].quantile(0.90)
-    peak_hours = holdout[holdout["demand_mw"] >= threshold]
-    eia_peak = regression_metrics(peak_hours["demand_mw"], peak_hours["forecast_mw"])
-    naive_peak = regression_metrics(
-        peak_hours["demand_mw"], peak_hours["seasonal_naive_pred_mw"]
-    )
-
-    x = np.arange(2)
+    order = ["EIA day-ahead", "Same hour last week", "ML-corrected EIA"]
+    scored = benchmark.set_index("model").loc[order]
+    x = np.arange(len(order))
     width = 0.36
-    fig, ax = plt.subplots(figsize=(9.5, 6.2), constrained_layout=True)
-    ax.bar(x - width / 2, [eia["mae"], naive["mae"]], width, label="All-hour MAE")
+    fig, ax = plt.subplots(figsize=(10.5, 6.2), constrained_layout=True)
+    ax.bar(
+        x - width / 2,
+        scored["mae_mw"].to_numpy(),
+        width,
+        label="All-hour MAE",
+    )
     ax.bar(
         x + width / 2,
-        [eia_peak["mae"], naive_peak["mae"]],
+        scored["peak_mae_mw"].to_numpy(),
         width,
         label="Top-decile demand MAE",
     )
-    ax.set_xticks(x, ["EIA day-ahead", "Same hour\nlast week"])
+    ax.set_xticks(
+        x,
+        ["EIA day-ahead", "Same hour\nlast week", "GridPulse ML\ncorrected EIA"],
+    )
     ax.set_ylabel("MAE (MW)")
-    ax.set_title("2025 holdout: reported day-ahead forecast vs weekly-naive baseline", pad=14)
+    ax.set_title(
+        "2025 holdout forecast benchmark — common rows and shared peak threshold",
+        pad=14,
+    )
     ax.margins(y=0.12)
     ax.legend(
         loc="upper center",
