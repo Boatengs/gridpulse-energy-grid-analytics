@@ -1,23 +1,17 @@
 import pandas as pd
+from gridpulse.forecasting import evaluate_seasonal_naive
 
-from gridpulse.forecasting import evaluate_seasonal_naive, peak_hour_metrics
 
-
-def test_seasonal_naive_same_hour_last_week():
-    periods = pd.date_range("2025-01-01", periods=24 * 21, freq="h", tz="UTC")
-    profile = [1000 + (i % 168) for i in range(len(periods))]
+def test_seasonal_naive_uses_exact_time_lag():
+    periods = pd.date_range("2025-01-01", periods=24 * 15, freq="h", tz="UTC")
     df = pd.DataFrame(
         {
             "period": periods,
             "respondent": "PJM",
-            "demand_mwh": profile,
+            "demand_mw": list(range(len(periods))),
         }
     )
-
-    holdout, metrics = evaluate_seasonal_naive(df, "2025-01-15")
-    peaks = peak_hour_metrics(holdout)
-
-    assert metrics["mae"] == 0
-    assert metrics["rmse"] == 0
-    assert metrics["smape"] == 0
-    assert peaks["mae"] == 0
+    holdout, metrics = evaluate_seasonal_naive(df, "2025-01-08")
+    valid = holdout.dropna(subset=["seasonal_naive_pred_mw"])
+    assert (valid["demand_mw"] - valid["seasonal_naive_pred_mw"]).eq(168).all()
+    assert metrics["mae"] == 168
