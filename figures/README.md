@@ -2,12 +2,17 @@
 
 README figures are code-derived analytical evidence.
 
-Current primary figures are generated from the downloaded **PJM EIA-930 2022–2025** snapshot:
+The current repository still commits the two synthetic development SVGs:
+
+- `demo_demand_forecast.svg`
+- `demo_stress_timeline.svg`
+
+`scripts/generate_readme_figures.py` has been upgraded to generate three real PJM EIA-930 figures from the prepared 2022–2025 local dataset:
 
 - `pjm_2025_peak_demand_forecast.svg`
 - `pjm_2025_forecast_benchmark.svg`
 - `pjm_2025_june_generation_mix.svg`
 
-The older synthetic development figures were removed after the real EIA snapshot became available.
+Those three real-data SVG outputs are **not committed yet**, so the top-level README should not reference them as if they are already present.
 
-Run `python scripts/generate_readme_figures.py` after preparing the downloaded data to regenerate the current figures.
+After running the generator against the frozen processed dataset, review the outputs, commit the SVGs, then replace the synthetic README visual section with the real PJM evidence.
