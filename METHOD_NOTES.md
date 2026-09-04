@@ -1,44 +1,89 @@
-# Method Notes
+# GridPulse Method Notes
 
 ## Source
-Primary source: U.S. Energy Information Administration Form EIA-930, accessed through API v2 `electricity/rto` routes.
 
-## Phase 1 metric codes
-- `D` — demand
-- `DF` — day-ahead demand forecast
-- `NG` — net generation
-- `TI` — total interchange
+The current production snapshot uses eight official EIA-930 six-month BALANCE CSV files covering PJM from 2022 through 2025 local time. Exact filenames and SHA-256 hashes are recorded in `DATASET_MANIFEST.md`.
 
-## Forecast-error definition
-`forecast_error_mwh = actual demand - day-ahead forecast`
+## Why the downloaded path is primary
 
-Positive values mean actual demand was higher than forecast. Absolute error is used for accuracy summaries; signed error is retained for bias diagnostics.
+A frozen source snapshot makes model comparisons, README evidence, and reviewer reproduction stable even if preliminary EIA observations are revised later. The live API client remains available for recent-data checks.
+
+## Ingestion
+
+`gridpulse.balance.load_balance_exports()`:
+
+1. reads large all-balancing-authority files in chunks,
+2. filters to the requested BA before concatenation,
+3. prefers EIA adjusted values for demand/generation/interchange,
+4. preserves imputation flags,
+5. normalizes the 2024 H2 fuel-schema change,
+6. returns one hourly operating table and one long fuel table.
+
+## Units
+
+The six-month BALANCE exports label operating values in MW. GridPulse uses `_mw` fields and MW dashboard labels.
+
+## Forecast error
+
+```text
+forecast_error_mw = demand_mw - forecast_mw
+```
+
+Positive values mean actual demand exceeded the reported day-ahead forecast.
 
 ## Demand ramp
-Hour-over-hour percent change in demand. Ramps are inspected separately from demand level because a rapid change can be operationally relevant even when demand is below the historical maximum.
 
-## Operational-stress screening
-The Phase 1 score is deliberately transparent:
+```text
+demand_ramp_pct = (demand_t / demand_t-1 - 1) × 100
+```
 
-- 40% demand percentile
-- 25% absolute forecast-error percentile
-- 20% normalized absolute hourly demand ramp
-- 15% interchange-dependence percentile
+Ramps are kept as observed. Extreme values are inspected against QA evidence before they are interpreted operationally.
 
-The thresholds and weights are provisional screening assumptions. They are not reliability standards and must be sensitivity-tested before any stronger interpretation.
+## Balance residual
 
-## Forecasting roadmap
-1. seasonal naive baseline
-2. linear/calendar baseline
-3. tree model with lag/calendar/weather features if justified
+```text
+balance_residual_mw =
+    net_generation_mw - demand_mw - total_interchange_mw
+```
+
+This is a diagnostic rather than an automatic correction rule. Large deviations can reflect source/reporting issues or accounting differences that deserve inspection.
+
+## Stress screening
+
+Current provisional weights:
+
+```text
+40% demand percentile
+25% absolute forecast-error percentile
+20% normalized absolute demand ramp
+15% interchange-dependence percentile
+```
+
+If an EIA component is missing, GridPulse reweights over available components rather than filling the missing component with zero. The score is not an official reliability or emergency metric.
+
+## Forecast validation
+
+Two 2025 benchmarks are currently reported:
+
+- EIA-reported day-ahead demand forecast
+- same UTC hour one week earlier
+
+Metrics:
+
+- MAE
+- RMSE
+- sMAPE
+- peak-hour MAE for the top 10% of holdout demand hours
+
+The EIA forecast is an operational benchmark reported by the source, not a model trained by GridPulse.
+
+## Modeling roadmap
+
+1. same-hour-last-week baseline
+2. calendar + lag linear baseline
+3. gradient-boosted trees
 4. rolling-origin validation
-5. peak-hour and seasonal error slices
-6. SHAP only if the tree model earns its complexity
+5. peak-hour / hour-of-day / seasonal error slices
+6. SHAP only if the tree model earns its added complexity
 
-## Live API architecture
-
-The Streamlit dashboard treats EIA API v2 as the primary data source. Responses are converted directly from JSON to pandas DataFrames and cached in memory for one hour. A local CSV is not required for dashboard operation.
-
-The API client paginates with EIA v2 `offset` and `length` parameters so long hourly windows are not silently truncated. `scripts/fetch_eia.py` is retained only for optional reproducibility snapshots when a forecasting experiment needs a frozen retrieval.
-
-If credentials are unavailable or a request fails, the dashboard falls back to a clearly labeled deterministic synthetic fixture. No synthetic values are presented as EIA findings.
+Random train/test splits are not appropriate for this time-series problem.
