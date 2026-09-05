@@ -65,6 +65,7 @@ def configure_plotly_theme() -> None:
 
 def inject_dashboard_css() -> None:
     """Apply a clean white presentation surface with strong text contrast."""
+    configure_plotly_theme()
     st.markdown(
         f"""
         <style>
