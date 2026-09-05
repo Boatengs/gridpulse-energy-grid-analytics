@@ -75,7 +75,7 @@ def inject_dashboard_css() -> None:
           color: {TEXT} !important;
         }}
         header[data-testid="stHeader"] {{
-          background: rgba(255,255,255,.96) !important;
+          background: #FFFFFF !important;
           border-bottom: 1px solid rgba(15,23,42,.06);
         }}
         .stApp, .stApp p, .stApp span, .stApp label,
@@ -83,7 +83,7 @@ def inject_dashboard_css() -> None:
         [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {{ color: {TEXT}; }}
         [data-testid="stCaptionContainer"] {{ color: {MUTED} !important; }}
         section[data-testid="stSidebar"] {{
-          background: #F8FAFC !important;
+          background: #FFFFFF !important;
           border-right: 1px solid rgba(15,23,42,.08);
         }}
         section[data-testid="stSidebar"] * {{ color: {TEXT}; }}
