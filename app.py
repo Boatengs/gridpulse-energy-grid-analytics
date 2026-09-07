@@ -235,7 +235,7 @@ c3.metric("Max hourly ramp", f"{max_ramp:.1f}%" if pd.notna(max_ramp) else "N/A"
 c4.metric("Max stress signal", f"{max_stress:.0f}/100" if pd.notna(max_stress) else "N/A")
 
 if animated_presentation:
-    st.subheader("Animated demand, forecast & operating stress")
+    st.subheader("Grid Demand, Forecast Accuracy & Operating Stress")
     animation_view = view.tail(min(168, len(view))).copy()
     fig = build_replay_figure(
         animation_view,
