@@ -1,4 +1,4 @@
-# GridPulse Live Animated Dashboard
+# GridPulse Live Operations Dashboard
 
 GridPulse now includes a multipage Streamlit control room at:
 
@@ -14,12 +14,12 @@ streamlit run app.py
 
 Then select **Live Control Room** from Streamlit's page navigation.
 
-## What is live vs animated
+## What is live vs replay
 
 The control room deliberately separates two ideas:
 
 - **Live EIA API mode** re-queries EIA-930 on a short cadence (about every five minutes when auto-refresh is enabled).
-- **Animated replay** runs locally in the browser and replays the selected hourly operating window with Play/Pause controls.
+- **Historical replay** runs locally in the browser and replays the selected hourly operating window with Play/Pause controls.
 
 EIA-930 is an hourly operational data source, not sub-second SCADA telemetry. The page therefore displays the timestamp and age of the latest observation and labels the feed as Fresh, Delayed, or Stale rather than pretending every observation is instantaneous.
 
@@ -33,7 +33,7 @@ Uses the prepared local file:
 data/processed/gridpulse_hourly.parquet
 ```
 
-This is the reproducible portfolio mode. It supports animated historical playback with no API key.
+This is the reproducible portfolio mode. It supports historical playback with no API key.
 
 If the prepared Parquet file is unavailable, the page clearly falls back to the synthetic development fixture rather than presenting synthetic values as PJM observations.
 
@@ -70,7 +70,7 @@ The page includes:
 - current forecast error,
 - hourly demand ramp,
 - current GridPulse stress-screen value,
-- animated demand-versus-EIA replay with browser-side Play/Pause,
+- demand-versus-EIA operating replay with browser-side Play/Pause,
 - playback-speed control,
 - operational stress gauge,
 - net generation and interchange readouts,

@@ -128,9 +128,9 @@ def stress_gauge(score: float | None) -> go.Figure:
 
 
 st.markdown('<div class="gp-hero"><div class="gp-kicker">GridPulse live operations</div></div>', unsafe_allow_html=True)
-st.title("⚡ Live Animated Control Room")
+st.title("⚡ GridPulse Live Control Room")
 st.caption(
-    "PJM/EIA-930 hourly operations with browser-side replay animation and optional auto-refresh. "
+    "PJM/EIA-930 hourly operations with browser-side time replay and optional auto-refresh. "
     "EIA-930 is an hourly operational feed, not sub-second telemetry, and observations can arrive late or be revised."
 )
 
@@ -197,11 +197,11 @@ def render_control_room(frame: pd.DataFrame, *, live_mode: bool, label: str) -> 
 
     left, right = st.columns([2.2, 1])
     with left:
-        st.subheader("Animated operating replay")
+        st.subheader("Demand & Forecast Operating Replay")
         replay = build_replay_figure(view, max_frames=replay_hours, frame_ms=speed_ms)
         st.plotly_chart(replay, use_container_width=True, config={"displaylogo": False})
         st.caption(
-            "Press Play to replay the operating window hour by hour. The animation is browser-side, "
+            "Press Play to replay the operating window hour by hour. The replay runs locally in your browser, "
             "so playback stays smooth without repeatedly querying EIA."
         )
     with right:
@@ -332,6 +332,6 @@ else:
             draw_live_once()
 
 st.caption(
-    "Live mode refreshes the EIA API on a short cadence; the animated replay itself is local to your browser. "
+    "Live mode refreshes the EIA API on a short cadence; replay playback stays local to your browser. "
     "Raw downloaded data remain outside Git."
 )

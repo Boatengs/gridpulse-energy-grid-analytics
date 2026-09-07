@@ -102,18 +102,18 @@ with st.sidebar:
     )
     st.divider()
     st.header("Presentation")
-    animated_presentation = st.toggle(
-        "Animated operating story",
+    replay_presentation = st.toggle(
+        "Operating replay",
         value=True,
         help="Show the lead demand/forecast view as a synchronized hour-by-hour replay.",
     )
-    animation_speed = st.select_slider(
-        "Animation speed",
+    replay_speed = st.select_slider(
+        "Replay speed",
         options=["Slow", "Normal", "Fast", "Very fast"],
         value="Normal",
-        disabled=not animated_presentation,
+        disabled=not replay_presentation,
     )
-    animation_ms = {"Slow": 360, "Normal": 180, "Fast": 90, "Very fast": 45}[animation_speed]
+    replay_ms = {"Slow": 360, "Normal": 180, "Fast": 90, "Very fast": 45}[replay_speed]
 
 fuel_df: pd.DataFrame | None = None
 demo_mode = False
@@ -234,13 +234,13 @@ c2.metric("Forecast MAE", f"{forecast_mae:,.0f} MW" if pd.notna(forecast_mae) el
 c3.metric("Max hourly ramp", f"{max_ramp:.1f}%" if pd.notna(max_ramp) else "N/A")
 c4.metric("Max stress signal", f"{max_stress:.0f}/100" if pd.notna(max_stress) else "N/A")
 
-if animated_presentation:
+if replay_presentation:
     st.subheader("Grid Demand, Forecast Accuracy & Operating Stress")
-    animation_view = view.tail(min(168, len(view))).copy()
+    replay_view = view.tail(min(168, len(view))).copy()
     fig = build_replay_figure(
-        animation_view,
-        max_frames=len(animation_view),
-        frame_ms=animation_ms,
+        replay_view,
+        max_frames=len(replay_view),
+        frame_ms=replay_ms,
     )
     st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
     st.caption(

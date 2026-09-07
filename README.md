@@ -51,7 +51,7 @@ The peak-demand result has an important asymmetry: in D10, mean positive forecas
 
 The committed aggregate tables live in `results/error_slices/`, and the Streamlit **Model Error Intelligence** page makes them interactive.
 
-## Live animated control room
+## Live control room
 
 GridPulse includes a dedicated Streamlit **Live Control Room** page with three operating modes:
 
@@ -61,7 +61,7 @@ GridPulse includes a dedicated Streamlit **Live Control Room** page with three o
 
 The control room includes:
 
-- browser-side Play/Pause demand-versus-forecast animation,
+- browser-side Play/Pause demand-versus-forecast replay,
 - selectable replay windows and playback speed,
 - optional live API auto-refresh about every five minutes,
 - latest-observation timestamp and Fresh / Delayed / Stale / Replay status,
@@ -264,7 +264,7 @@ The Streamlit app now includes the original analytical dashboard plus dedicated 
 11. EIA vs weekly naive vs ML out-of-time benchmark,
 12. peak-demand forecast benchmark,
 13. model promotion gate,
-14. animated historical replay with Play/Pause,
+14. historical replay with Play/Pause,
 15. live EIA API refresh with freshness labeling,
 16. current operating KPI and stress-gauge view,
 17. hour/month/season/day-type/demand-decile error intelligence,
